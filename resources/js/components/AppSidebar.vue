@@ -14,7 +14,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, LayoutDashboard, Users, BarChart3 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
@@ -22,6 +22,23 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
+        submenu: [
+            {
+                title: 'Seatplan',
+                href: '/dashboard/seatplan',
+                icon: LayoutDashboard,
+            },
+            {
+                title: 'Attendance',
+                href: '/dashboard/attendance',
+                icon: Users,
+            },
+            {
+                title: 'Grades',
+                href: '/dashboard/grades',
+                icon: BarChart3,
+            },
+        ],
     },
 ];
 
