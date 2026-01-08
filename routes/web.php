@@ -12,18 +12,6 @@ Route::get('/', function () {
 
 Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
-})->name('dashboard');
-
-Route::get('seatplan', function () {
-    return Inertia::render('Seatplan');
-})->name('seatplan');
-
-Route::get('attendance', function () {
-    return Inertia::render('Attendance');
-})->name('attendance');
-
-Route::get('grades', function () {
-    return Inertia::render('Grades');
-})->name('grades');
+})->middleware(['auth', 'verified'])->name('dashboard');
 
 require __DIR__.'/settings.php';
