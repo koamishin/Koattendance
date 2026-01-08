@@ -22,23 +22,21 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
-        submenu: [
-            {
-                title: 'Seatplan',
-                href: '/dashboard/seatplan',
-                icon: LayoutDashboard,
-            },
-            {
-                title: 'Attendance',
-                href: '/dashboard/attendance',
-                icon: Users,
-            },
-            {
-                title: 'Grades',
-                href: '/dashboard/grades',
-                icon: BarChart3,
-            },
-        ],
+    },
+    {
+        title: 'Seatplan',
+        href: '/dashboard/seatplan',
+        icon: LayoutDashboard,
+    },
+    {
+        title: 'Attendance',
+        href: '/dashboard/attendance',
+        icon: Users,
+    },
+    {
+        title: 'Grades',
+        href: '/dashboard/grades',
+        icon: BarChart3,
     },
 ];
 
