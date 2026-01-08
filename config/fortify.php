@@ -77,20 +77,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Fortify Redirects
-    |--------------------------------------------------------------------------
-    |
-    | Here you may specify custom redirect paths that you would like to use
-    | after logging out. Fortify will redirect to this path upon logout.
-    |
-    */
-
-    'redirects' => [
-        'logout' => '/',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Fortify Routes Prefix / Subdomain
     |--------------------------------------------------------------------------
     |

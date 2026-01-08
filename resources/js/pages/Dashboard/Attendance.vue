@@ -2,12 +2,15 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
-import PlaceholderPattern from '../components/PlaceholderPattern.vue';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Attendance',
-        href: '#',
+        href: '/dashboard/attendance',
     },
 ];
 </script>
@@ -19,13 +22,15 @@ const breadcrumbs: BreadcrumbItem[] = [
         <div
             class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
         >
-            <div class="flex items-center justify-between">
-                <h1 class="text-3xl font-bold">Attendance</h1>
-            </div>
+            <h1 class="text-3xl font-bold">Attendance</h1>
             <div
-                class="relative min-h-[100vh] flex-1 rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
+                class="relative flex-1 rounded-xl border border-sidebar-border/70 p-6 dark:border-sidebar-border"
             >
-                <PlaceholderPattern />
+                <div class="flex h-full items-center justify-center">
+                    <p class="text-muted-foreground">
+                        Attendance records will be displayed here
+                    </p>
+                </div>
             </div>
         </div>
     </AppLayout>
