@@ -8,12 +8,23 @@ use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->call([
+            UserSeeder::class,
+            GuardianSeeder::class,
+            TeacherSeeder::class,
+            CourseSeeder::class,
+            SectionSeeder::class,
+            StudentSeeder::class,
+            GradeScaleSeeder::class,
+            ClassSessionSeeder::class,
+            AlertConfigurationSeeder::class,
+            AttendanceRecordSeeder::class,
+            GradeSeeder::class,
+            AlertLogSeeder::class,
+            SeatPlanSeeder::class,
+        ]);
 
         User::factory()->create([
             'name' => 'Test User',
