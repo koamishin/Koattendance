@@ -26,6 +26,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard/grades', function () {
         return Inertia::render('Dashboard/Grades');
     })->name('dashboard.grades');
+
+    Route::get('api/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('api.grades');
+    Route::get('api/attendance', [\App\Http\Controllers\AttendanceController::class, 'index'])->name('api.attendance');
+    Route::get('api/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'getStats'])->name('api.dashboard.stats');
+    Route::get('api/dashboard/attendance-summary', [\App\Http\Controllers\DashboardController::class, 'getAttendanceSummary'])->name('api.dashboard.attendance-summary');
+    Route::get('api/dashboard/grade-summary', [\App\Http\Controllers\DashboardController::class, 'getGradeSummary'])->name('api.dashboard.grade-summary');
+    Route::post('attendance/{id}/update-status', [\App\Http\Controllers\AttendanceController::class, 'updateStatus'])->name('attendance.updateStatus');
 });
 
 require __DIR__.'/settings.php';

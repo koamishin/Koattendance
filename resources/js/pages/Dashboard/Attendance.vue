@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { Check, X, Calendar } from 'lucide-vue-next';
+import { ref, computed, onMounted } from 'vue';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -15,70 +16,55 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const attendanceRecords = [
-    {
-        id: 1,
-        name: 'John Smith',
-        status: 'present',
-        date: '2024-01-08',
-        time: '09:00 AM',
-    },
-    {
-        id: 2,
-        name: 'Sarah Johnson',
-        status: 'present',
-        date: '2024-01-08',
-        time: '09:05 AM',
-    },
-    {
-        id: 3,
-        name: 'Mike Davis',
-        status: 'absent',
-        date: '2024-01-08',
-        time: '-',
-    },
-    {
-        id: 4,
-        name: 'Emily Brown',
-        status: 'present',
-        date: '2024-01-08',
-        time: '09:02 AM',
-    },
-    {
-        id: 5,
-        name: 'Alex Wilson',
-        status: 'present',
-        date: '2024-01-08',
-        time: '09:01 AM',
-    },
-    {
-        id: 6,
-        name: 'Jessica Lee',
-        status: 'present',
-        date: '2024-01-08',
-        time: '09:03 AM',
-    },
-    {
-        id: 7,
-        name: 'Chris Martin',
-        status: 'late',
-        date: '2024-01-08',
-        time: '09:35 AM',
-    },
-    {
-        id: 8,
-        name: 'Lisa Anderson',
-        status: 'present',
-        date: '2024-01-08',
-        time: '08:58 AM',
-    },
-];
+const attendanceRecords = ref<any[]>([]);
+const stats = ref({
+    present: 0,
+    absent: 0,
+    late: 0,
+    total: 0,
+});
+const latestDate = ref<string | null>(null);
+const editingId = ref<number | null>(null);
+const editingStatus = ref<string>('');
 
-const stats = {
-    present: 6,
-    absent: 1,
-    late: 1,
-    total: 8,
+onMounted(async () => {
+    await loadAttendance();
+});
+
+const loadAttendance = async () => {
+    try {
+        const response = await fetch('/api/attendance');
+        const data = await response.json();
+        attendanceRecords.value = data.attendanceRecords;
+        stats.value = data.stats;
+        latestDate.value = data.latestDate;
+    } catch (error) {
+        console.error('Error fetching attendance:', error);
+    }
+};
+
+const startEditing = (record: any, index: number) => {
+    editingId.value = index;
+    editingStatus.value = record.status;
+};
+
+const updateStatus = (record: any, index: number, newStatus: string) => {
+    router.post(
+        `/attendance/${record.id}/update-status`,
+        { status: newStatus },
+        {
+            preserveState: true,
+            onFinish: () => {
+                editingId.value = null;
+                loadAttendance();
+            },
+        }
+    );
+};
+
+const cancelEditing = () => {
+    editingId.value = null;
+    editingStatus.value = '';
 };
 
 const getStatusBadge = (status: string) => {
@@ -101,6 +87,12 @@ const getStatusBadge = (status: string) => {
                 text: 'text-yellow-800 dark:text-yellow-200',
                 label: 'Late',
             };
+        case 'unmarked':
+            return {
+                bg: 'bg-gray-100 dark:bg-gray-800',
+                text: 'text-gray-600 dark:text-gray-400',
+                label: 'Unmarked',
+            };
         default:
             return {
                 bg: 'bg-gray-100 dark:bg-gray-800',
@@ -120,7 +112,7 @@ const getStatusBadge = (status: string) => {
                 <h1 class="text-3xl font-bold mb-2">Attendance Records</h1>
                 <div class="flex items-center gap-2 text-muted-foreground">
                     <Calendar class="w-4 h-4" />
-                    <span>January 8, 2024</span>
+                    <span>{{ latestDate || 'No records yet' }}</span>
                 </div>
             </div>
 
@@ -168,7 +160,19 @@ const getStatusBadge = (status: string) => {
             </div>
 
             <!-- Attendance Table -->
+            <div v-if="attendanceRecords.length === 0" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
+                <div class="flex flex-col items-center justify-center text-center">
+                    <Calendar class="w-16 h-16 text-muted-foreground/30 mb-4" />
+                    <h3 class="text-lg font-semibold text-muted-foreground mb-2">
+                        No Attendance Records Yet
+                    </h3>
+                    <p class="text-sm text-muted-foreground max-w-md">
+                        Attendance records will appear here once the admin adds attendance data.
+                    </p>
+                </div>
+            </div>
             <div
+                v-else
                 class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden"
             >
                 <table class="w-full">
@@ -181,23 +185,51 @@ const getStatusBadge = (status: string) => {
                                 Status
                             </th>
                             <th class="text-left px-6 py-3 font-semibold text-sm">
+                                Date
+                            </th>
+                            <th class="text-left px-6 py-3 font-semibold text-sm">
                                 Time
                             </th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr
-                            v-for="record in attendanceRecords"
-                            :key="record.id"
+                            v-for="(record, index) in attendanceRecords"
+                            :key="index"
                             class="border-b border-sidebar-border/70 dark:border-sidebar-border hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors"
                         >
                             <td class="px-6 py-4">
                                 <span class="font-medium">{{ record.name }}</span>
                             </td>
                             <td class="px-6 py-4">
+                                <div v-if="editingId === index" class="flex gap-2">
+                                    <select
+                                        v-model="editingStatus"
+                                        class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                                    >
+                                        <option value="present">Present</option>
+                                        <option value="late">Late</option>
+                                        <option value="absent">Absent</option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        @click.prevent="updateStatus(record, index, editingStatus)"
+                                        class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+                                    >
+                                        ✓
+                                    </button>
+                                    <button
+                                        @click="cancelEditing"
+                                        class="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
                                 <span
+                                    v-else
+                                    @click="startEditing(record, index)"
                                     :class="[
-                                        'inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium',
+                                        'inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity',
                                         getStatusBadge(record.status).bg,
                                         getStatusBadge(record.status).text,
                                     ]"
@@ -212,6 +244,9 @@ const getStatusBadge = (status: string) => {
                                     />
                                     {{ getStatusBadge(record.status).label }}
                                 </span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-muted-foreground">
+                                {{ record.date }}
                             </td>
                             <td class="px-6 py-4 text-sm text-muted-foreground">
                                 {{ record.time }}

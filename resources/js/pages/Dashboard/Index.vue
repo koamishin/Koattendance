@@ -3,13 +3,13 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { dashboard } from '@/routes';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
+import { onMounted, ref } from 'vue';
 import {
     Users,
     CheckCircle2,
     TrendingUp,
     Calendar,
-    BookOpen,
-    Clock,
+    AlertCircle,
 } from 'lucide-vue-next';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -19,98 +19,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const stats = [
-    {
-        title: 'Total Students',
-        value: '120',
-        icon: Users,
-        color: 'text-blue-600',
-        bgColor: 'bg-blue-100 dark:bg-blue-900/30',
-    },
-    {
-        title: 'Present Today',
-        value: '115',
-        icon: CheckCircle2,
-        color: 'text-green-600',
-        bgColor: 'bg-green-100 dark:bg-green-900/30',
-    },
-    {
-        title: 'Average Grade',
-        value: '86.5',
-        icon: TrendingUp,
-        color: 'text-purple-600',
-        bgColor: 'bg-purple-100 dark:bg-purple-900/30',
-    },
-    {
-        title: 'Classes Today',
-        value: '6',
-        icon: BookOpen,
-        color: 'text-orange-600',
-        bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-    },
-];
-
-const recentClasses = [
-    {
-        id: 1,
-        name: 'Mathematics 101',
-        time: '09:00 AM',
-        room: 'Room 301',
-        attendance: 35,
-        total: 36,
-    },
-    {
-        id: 2,
-        name: 'English Literature',
-        time: '10:30 AM',
-        room: 'Room 302',
-        attendance: 34,
-        total: 35,
-    },
-    {
-        id: 3,
-        name: 'Physics Lab',
-        time: '01:00 PM',
-        room: 'Lab A',
-        attendance: 32,
-        total: 32,
-    },
-    {
-        id: 4,
-        name: 'History Discussion',
-        time: '02:30 PM',
-        room: 'Room 304',
-        attendance: 28,
-        total: 30,
-    },
-];
-
-const upcomingEvents = [
-    {
-        id: 1,
-        title: 'Midterm Exams',
-        date: 'January 15 - 20, 2024',
-        type: 'Exam',
-    },
-    {
-        id: 2,
-        title: 'Parent-Teacher Conference',
-        date: 'January 25, 2024',
-        type: 'Meeting',
-    },
-    {
-        id: 3,
-        title: 'Science Fair',
-        date: 'February 5, 2024',
-        type: 'Event',
-    },
-    {
-        id: 4,
-        title: 'Field Trip to Museum',
-        date: 'February 10, 2024',
-        type: 'Activity',
-    },
-];
+const stats = ref<any[]>([]);
+const recentRecords = ref<any[]>([]);
+const topGrades = ref<any[]>([]);
+const gradeDistribution = ref<Record<string, number>>({});
+const latestDate = ref<string | null>(null);
+const isLoading = ref(true);
 
 const weeklyAttendance = [
     { day: 'Mon', present: 115, absent: 5 },
@@ -120,14 +34,6 @@ const weeklyAttendance = [
     { day: 'Fri', present: 110, absent: 10 },
 ];
 
-const gradeDistribution = [
-    { range: 'A (90-100)', count: 35, percentage: 29 },
-    { range: 'B (80-89)', count: 48, percentage: 40 },
-    { range: 'C (70-79)', count: 28, percentage: 23 },
-    { range: 'D (60-69)', count: 7, percentage: 6 },
-    { range: 'F (<60)', count: 2, percentage: 2 },
-];
-
 const subjectPerformance = [
     { subject: 'Mathematics', avgGrade: 86.5, maxGrade: 98 },
     { subject: 'English', avgGrade: 84.2, maxGrade: 95 },
@@ -135,6 +41,48 @@ const subjectPerformance = [
     { subject: 'History', avgGrade: 83.5, maxGrade: 96 },
     { subject: 'PE', avgGrade: 88.1, maxGrade: 100 },
 ];
+
+onMounted(async () => {
+    try {
+        const [statsRes, attendanceRes, gradeRes] = await Promise.all([
+            fetch('/api/dashboard/stats'),
+            fetch('/api/dashboard/attendance-summary'),
+            fetch('/api/dashboard/grade-summary'),
+        ]);
+
+        const statsData = await statsRes.json();
+        const attendanceData = await attendanceRes.json();
+        const gradeData = await gradeRes.json();
+
+        stats.value = statsData.stats;
+        latestDate.value = statsData.latestDate;
+        recentRecords.value = attendanceData.recentRecords;
+        topGrades.value = gradeData.topGrades;
+        gradeDistribution.value = gradeData.gradeDistribution;
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+    } finally {
+        isLoading.value = false;
+    }
+});
+
+const getIconComponent = (iconName: string) => {
+    const icons: Record<string, any> = {
+        Users,
+        CheckCircle2,
+        TrendingUp,
+        AlertCircle,
+    };
+    return icons[iconName] || Users;
+};
+
+const getGradeDistributionList = () => {
+    return Object.entries(gradeDistribution.value).map(([range, count]) => ({
+        range,
+        count,
+        percentage: Math.round((count / Object.values(gradeDistribution.value).reduce((a, b) => a + b, 0)) * 100) || 0,
+    }));
+};
 </script>
 
 <template>
@@ -149,7 +97,7 @@ const subjectPerformance = [
                 <h1 class="text-4xl font-bold mb-2">Welcome Back</h1>
                 <p class="text-muted-foreground flex items-center gap-2">
                     <Calendar class="w-4 h-4" />
-                    Monday, January 8, 2024
+                    {{ latestDate || 'Loading...' }}
                 </p>
             </div>
 
@@ -169,7 +117,7 @@ const subjectPerformance = [
                         </div>
                         <div :class="[stat.bgColor, 'rounded-lg p-3']">
                             <component
-                                :is="stat.icon"
+                                :is="getIconComponent(stat.icon)"
                                 :class="['w-6 h-6', stat.color]"
                             />
                         </div>
@@ -179,48 +127,52 @@ const subjectPerformance = [
 
             <!-- Main Content Grid -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Today's Classes -->
+                <!-- Recent Attendance -->
                 <div class="lg:col-span-2">
                     <div
                         class="rounded-lg border border-sidebar-border/70 p-6 dark:border-sidebar-border"
                     >
                         <div class="flex items-center gap-2 mb-6">
-                            <Clock class="w-5 h-5 text-primary" />
-                            <h2 class="text-xl font-bold">Today's Classes</h2>
+                            <CheckCircle2 class="w-5 h-5 text-primary" />
+                            <h2 class="text-xl font-bold">Recent Attendance</h2>
                         </div>
 
-                        <div class="space-y-4">
+                        <div
+                            v-if="recentRecords.length === 0"
+                            class="text-center py-8 text-muted-foreground"
+                        >
+                            No attendance records found
+                        </div>
+
+                        <div v-else class="space-y-4">
                             <div
-                                v-for="classItem in recentClasses"
-                                :key="classItem.id"
+                                v-for="record in recentRecords"
+                                :key="record.id"
                                 class="flex items-center justify-between p-4 rounded-lg bg-muted/50 dark:bg-muted/20 hover:bg-muted dark:hover:bg-muted/30 transition-colors"
                             >
                                 <div class="flex-1">
                                     <h3 class="font-semibold mb-1">
-                                        {{ classItem.name }}
+                                        {{ record.name }}
                                     </h3>
                                     <div
                                         class="flex items-center gap-4 text-sm text-muted-foreground"
                                     >
-                                        <span>{{ classItem.time }}</span>
-                                        <span>{{ classItem.room }}</span>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-semibold">
-                                        {{
-                                            classItem.attendance
-                                        }}/{{ classItem.total }}
-                                    </div>
-                                    <div class="text-xs text-muted-foreground">
-                                        {{
-                                            (
-                                                (classItem.attendance /
-                                                    classItem.total) *
-                                                100
-                                            ).toFixed(0)
-                                        }}%
-                                        Present
+                                        <span>{{ record.time }}</span>
+                                        <span
+                                            :class="[
+                                                'inline-block px-2 py-1 rounded text-xs font-medium',
+                                                record.status === 'present'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-200'
+                                                    : record.status === 'late'
+                                                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-200'
+                                                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-200',
+                                            ]"
+                                        >
+                                            {{
+                                                record.status.charAt(0).toUpperCase() +
+                                                record.status.slice(1)
+                                            }}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -228,47 +180,34 @@ const subjectPerformance = [
                     </div>
                 </div>
 
-                <!-- Upcoming Events -->
+                <!-- Top Grades -->
                 <div>
                     <div
                         class="rounded-lg border border-sidebar-border/70 p-6 dark:border-sidebar-border"
                     >
-                        <h2 class="text-xl font-bold mb-6">Upcoming Events</h2>
+                        <h2 class="text-xl font-bold mb-6">Top Performing Students</h2>
 
-                        <div class="space-y-4">
+                        <div
+                            v-if="topGrades.length === 0"
+                            class="text-center py-8 text-muted-foreground"
+                        >
+                            No grade records found
+                        </div>
+
+                        <div v-else class="space-y-4">
                             <div
-                                v-for="event in upcomingEvents"
-                                :key="event.id"
-                                class="p-4 rounded-lg bg-muted/50 dark:bg-muted/20 hover:bg-muted dark:hover:bg-muted/30 transition-colors border-l-4"
-                                :class="[
-                                    event.type === 'Exam'
-                                        ? 'border-l-red-500'
-                                        : event.type === 'Meeting'
-                                          ? 'border-l-blue-500'
-                                          : event.type === 'Event'
-                                            ? 'border-l-purple-500'
-                                            : 'border-l-green-500',
-                                ]"
+                                v-for="(grade, idx) in topGrades"
+                                :key="idx"
+                                class="p-4 rounded-lg bg-muted/50 dark:bg-muted/20 hover:bg-muted dark:hover:bg-muted/30 transition-colors border-l-4 border-l-blue-500"
                             >
                                 <h3 class="font-semibold text-sm mb-1">
-                                    {{ event.title }}
+                                    {{ grade.name }}
                                 </h3>
                                 <p class="text-xs text-muted-foreground mb-2">
-                                    {{ event.date }}
+                                    {{ grade.subject }}
                                 </p>
-                                <span
-                                    :class="[
-                                        'inline-block px-2 py-1 rounded text-xs font-medium',
-                                        event.type === 'Exam'
-                                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-200'
-                                            : event.type === 'Meeting'
-                                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200'
-                                              : event.type === 'Event'
-                                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-200'
-                                                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-200',
-                                    ]"
-                                >
-                                    {{ event.type }}
+                                <span class="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200">
+                                    {{ grade.grade }}
                                 </span>
                             </div>
                         </div>
@@ -412,9 +351,16 @@ const subjectPerformance = [
                 >
                     <h3 class="text-lg font-bold mb-6">Grade Distribution</h3>
 
-                    <div class="space-y-4">
+                    <div
+                        v-if="Object.keys(gradeDistribution).length === 0"
+                        class="text-center py-8 text-muted-foreground"
+                    >
+                        No grade data available
+                    </div>
+
+                    <div v-else class="space-y-4">
                         <div
-                            v-for="grade in gradeDistribution"
+                            v-for="grade in getGradeDistributionList()"
                             :key="grade.range"
                             class="flex items-end gap-4"
                         >
@@ -445,7 +391,7 @@ const subjectPerformance = [
                         </p>
                         <p class="text-2xl font-bold">
                             {{
-                                gradeDistribution.reduce((sum, g) => sum + g.count, 0)
+                                Object.values(gradeDistribution).reduce((sum: number, g) => sum + g, 0)
                             }}
                         </p>
                     </div>
