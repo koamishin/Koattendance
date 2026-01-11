@@ -60,7 +60,7 @@ class DashboardController extends Controller
 
     public function getAttendanceSummary(): JsonResponse
     {
-        $allRecords = AttendanceRecord::orderBy('date', 'desc')->get();
+        $allRecords = AttendanceRecord::with('subject')->orderBy('date', 'desc')->get();
         $latestDate = $allRecords->first()?->date;
 
         $records = $allRecords
@@ -73,6 +73,7 @@ class DashboardController extends Controller
                 'id' => $record->id,
                 'name' => $record->student_name,
                 'status' => $record->status,
+                'subject' => $record->subject?->name ?? 'N/A',
                 'time' => $record->status === 'absent' ? '-' : ($record->time ? date('h:i A', strtotime($record->time)) : '-'),
             ])
             ->values();
@@ -85,11 +86,12 @@ class DashboardController extends Controller
 
     public function getGradeSummary(): JsonResponse
     {
-        // Get top performing student by average grade
+        // Get top performing students with 95+ average
         $studentAverages = Grade::selectRaw('student_name, AVG(CAST(grade AS REAL)) as avg_grade')
             ->groupBy('student_name')
+            ->havingRaw('AVG(CAST(grade AS REAL)) >= 95')
             ->orderByRaw('AVG(CAST(grade AS REAL)) DESC')
-            ->limit(1)
+            ->limit(5)
             ->get();
 
         $topGrades = $studentAverages->map(fn ($student) => [

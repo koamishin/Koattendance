@@ -34,7 +34,20 @@ const editingId = ref<number | null>(null);
 const editingStatus = ref<string>('');
 
 onMounted(async () => {
-    await loadAttendance();
+    // Load saved subject and date from localStorage
+    const savedSubjectId = localStorage.getItem('attendance_selectedSubjectId');
+    const savedDateValue = localStorage.getItem('attendance_selectedDateValue');
+    
+    // Set the values
+    if (savedSubjectId) {
+        selectedSubjectId.value = parseInt(savedSubjectId);
+    }
+    if (savedDateValue) {
+        selectedDateValue.value = savedDateValue;
+    }
+    
+    // Load attendance with saved values
+    await loadAttendance(savedDateValue || undefined, savedSubjectId ? parseInt(savedSubjectId) : null);
 });
 
 const loadAttendance = async (date?: string, subjectId?: number | null) => {
@@ -71,11 +84,24 @@ const loadAttendance = async (date?: string, subjectId?: number | null) => {
 };
 
 const onDateChange = (date: string) => {
+    selectedDateValue.value = date;
+    
+    // Save to localStorage
+    localStorage.setItem('attendance_selectedDateValue', date);
+    
     loadAttendance(date, selectedSubjectId.value);
 };
 
 const onSubjectChange = (subjectId: number | null) => {
     selectedSubjectId.value = subjectId;
+    
+    // Save to localStorage
+    if (subjectId) {
+        localStorage.setItem('attendance_selectedSubjectId', subjectId.toString());
+    } else {
+        localStorage.removeItem('attendance_selectedSubjectId');
+    }
+    
     loadAttendance(selectedDateValue.value || undefined, subjectId);
 };
 
@@ -83,7 +109,10 @@ const goToPreviousDate = () => {
     if (!selectedDateValue.value) return;
     const currentIndex = availableDates.value.indexOf(selectedDateValue.value);
     if (currentIndex < availableDates.value.length - 1) {
-        loadAttendance(availableDates.value[currentIndex + 1]);
+        const newDate = availableDates.value[currentIndex + 1];
+        selectedDateValue.value = newDate;
+        localStorage.setItem('attendance_selectedDateValue', newDate);
+        loadAttendance(newDate, selectedSubjectId.value);
     }
 };
 
@@ -91,7 +120,10 @@ const goToNextDate = () => {
     if (!selectedDateValue.value) return;
     const currentIndex = availableDates.value.indexOf(selectedDateValue.value);
     if (currentIndex > 0) {
-        loadAttendance(availableDates.value[currentIndex - 1]);
+        const newDate = availableDates.value[currentIndex - 1];
+        selectedDateValue.value = newDate;
+        localStorage.setItem('attendance_selectedDateValue', newDate);
+        loadAttendance(newDate, selectedSubjectId.value);
     }
 };
 
