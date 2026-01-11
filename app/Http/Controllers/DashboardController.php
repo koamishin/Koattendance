@@ -13,10 +13,8 @@ class DashboardController extends Controller
     {
         $totalStudents = Student::count();
         
-        $latestDate = AttendanceRecord::orderBy('date', 'desc')->value('date');
-        $todayRecords = AttendanceRecord::when($latestDate, function ($query) use ($latestDate) {
-            return $query->whereDate('date', $latestDate);
-        })->get();
+        $today = \Carbon\Carbon::today();
+        $todayRecords = AttendanceRecord::whereDate('date', $today)->get();
         
         $presentToday = $todayRecords->where('status', 'present')->count();
         $absentToday = $todayRecords->where('status', 'absent')->count();
@@ -56,7 +54,7 @@ class DashboardController extends Controller
                     'bgColor' => 'bg-red-100 dark:bg-red-900/30',
                 ],
             ],
-            'latestDate' => $latestDate ? $latestDate->format('F d, Y') : null,
+            'latestDate' => $today->format('F d, Y'),
         ]);
     }
 

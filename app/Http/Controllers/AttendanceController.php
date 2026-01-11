@@ -20,13 +20,14 @@ class AttendanceController extends Controller
                 return back()->with('error', 'Student not found');
             }
 
-            $latestDate = AttendanceRecord::orderBy('date', 'desc')->first()?->date;
+            // Use the provided date or get the latest date
+            $date = request('date') ? \Carbon\Carbon::parse(request('date')) : (AttendanceRecord::orderBy('date', 'desc')->first()?->date ?? now());
 
             AttendanceRecord::create([
                 'student_id' => $student->id,
                 'student_name' => $studentName,
                 'status' => request('status'),
-                'date' => $latestDate ?? now(),
+                'date' => $date,
                 'time' => now(),
             ]);
 
@@ -50,20 +51,46 @@ class AttendanceController extends Controller
     {
         $allRecords = AttendanceRecord::orderBy('date', 'desc')->get();
         Log::info('Attendance Records Count: '.$allRecords->count());
+        
+        // Get selected date from query parameter or use today's date
+        $selectedDate = request('date') 
+            ? \Carbon\Carbon::parse(request('date')) 
+            : \Carbon\Carbon::today();
+        
         $latestDate = $allRecords->first()?->date;
+
+        // Get all unique dates from records for the date selector
+        $recordDates = $allRecords
+            ->pluck('date')
+            ->unique()
+            ->map(fn ($date) => $date->format('Y-m-d'));
+
+        // Add today and the next 30 days
+        $today = \Carbon\Carbon::today();
+        $futureDates = collect();
+        for ($i = 0; $i <= 30; $i++) {
+            $futureDates->push($today->copy()->addDays($i)->format('Y-m-d'));
+        }
+
+        $availableDates = $recordDates
+            ->merge($futureDates)
+            ->unique()
+            ->sort()
+            ->reverse()
+            ->values();
 
         // Get all students
         $students = \App\Models\Student::all();
 
-        // Build attendance map for the latest date
+        // Build attendance map for the selected date
         $attendanceMap = $allRecords
-            ->when($latestDate, function ($collection) use ($latestDate) {
-                return $collection->filter(fn ($record) => $record->date->toDateString() === $latestDate->toDateString());
+            ->when($selectedDate, function ($collection) use ($selectedDate) {
+                return $collection->filter(fn ($record) => $record->date->toDateString() === $selectedDate->toDateString());
             })
             ->keyBy('student_name');
 
         // Create records for all students
-        $records = $students->map(function ($student) use ($attendanceMap, $latestDate) {
+        $records = $students->map(function ($student) use ($attendanceMap, $selectedDate) {
             $record = $attendanceMap->get($student->name);
 
             if ($record) {
@@ -72,6 +99,7 @@ class AttendanceController extends Controller
                     'name' => $student->name,
                     'status' => $record->status,
                     'date' => $record->date->format('M d, Y'),
+                    'dayOfWeek' => $record->date->format('l'),
                     'time' => $record->status === 'absent' ? '-' : ($record->time ? date('h:i A', strtotime($record->time)) : '-'),
                 ];
             }
@@ -80,10 +108,17 @@ class AttendanceController extends Controller
                 'id' => null,
                 'name' => $student->name,
                 'status' => 'unmarked',
-                'date' => $latestDate ? $latestDate->format('M d, Y') : 'N/A',
+                'date' => $selectedDate ? $selectedDate->format('M d, Y') : 'N/A',
+                'dayOfWeek' => $selectedDate ? $selectedDate->format('l') : 'N/A',
                 'time' => '-',
             ];
         })->sortBy('name')->values();
+
+        // Group records by day of week (Monday to Saturday)
+        $dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        $groupedRecords = $records->groupBy('dayOfWeek')->sortBy(function ($group, $day) use ($dayOrder) {
+            return array_search($day, $dayOrder, true);
+        });
 
         $stats = [
             'present' => $records->where('status', 'present')->count(),
@@ -94,8 +129,11 @@ class AttendanceController extends Controller
 
         return response()->json([
             'attendanceRecords' => $records,
+            'groupedRecords' => $groupedRecords,
             'stats' => $stats,
+            'selectedDate' => $selectedDate ? $selectedDate->format('F d, Y') : null,
             'latestDate' => $latestDate ? $latestDate->format('F d, Y') : null,
+            'availableDates' => $availableDates,
         ]);
     }
 }
