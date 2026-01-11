@@ -28,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('dashboard.grades');
 
     Route::get('api/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('api.grades');
+    Route::patch('api/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('api.grades.update');
     Route::get('api/attendance', [\App\Http\Controllers\AttendanceController::class, 'index'])->name('api.attendance');
     Route::get('api/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'getStats'])->name('api.dashboard.stats');
     Route::get('api/dashboard/attendance-summary', [\App\Http\Controllers\DashboardController::class, 'getAttendanceSummary'])->name('api.dashboard.attendance-summary');

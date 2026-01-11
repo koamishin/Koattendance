@@ -26,7 +26,9 @@ class GradeController extends Controller
 
             foreach ($subjects as $subject) {
                 $gradeObj = $grades->firstWhere('subject_id', $subject->id);
-                $record[$this->slugify($subject->name)] = $gradeObj ? (float) $gradeObj->grade : null;
+                $gradeValue = $gradeObj ? (float) $gradeObj->grade : null;
+                $record[$this->slugify($subject->name)] = $gradeValue;
+                $record[$this->slugify($subject->name).'_id'] = $gradeObj ? $gradeObj->id : null;
                 if ($gradeObj) {
                     $totalGrade += $gradeObj->grade;
                     $gradeCount++;
@@ -40,6 +42,20 @@ class GradeController extends Controller
         return response()->json([
             'gradeRecords' => $gradeRecords,
             'subjects' => $subjects->pluck('name')->map(fn ($name) => $this->slugify($name)),
+        ]);
+    }
+
+    public function update(Grade $grade): JsonResponse
+    {
+        $validated = request()->validate([
+            'grade' => 'required|numeric|min:0|max:100',
+        ]);
+
+        $grade->update(['grade' => $validated['grade']]);
+
+        return response()->json([
+            'message' => 'Grade updated successfully',
+            'grade' => $grade,
         ]);
     }
 

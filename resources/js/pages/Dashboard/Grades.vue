@@ -18,6 +18,9 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const gradeRecords = ref<any[]>([]);
 const subjects = ref<string[]>([]);
+const editingCell = ref<string | null>(null);
+const editValue = ref<string>('');
+const savingCell = ref<string | null>(null);
 
 onMounted(async () => {
     try {
@@ -36,6 +39,69 @@ const getGradeColor = (grade: number | null) => {
     if (grade >= 80) return 'text-blue-600 font-bold';
     if (grade >= 70) return 'text-yellow-600 font-bold';
     return 'text-red-600 font-bold';
+};
+
+const startEdit = (rowIndex: number, subject: string, value: number | null) => {
+    editingCell.value = `${rowIndex}-${subject}`;
+    editValue.value = value !== null ? String(value) : '';
+};
+
+const cancelEdit = () => {
+    editingCell.value = null;
+    editValue.value = '';
+};
+
+const saveGrade = async (rowIndex: number, subject: string) => {
+    const gradeId = gradeRecords.value[rowIndex][`${subject}_id`];
+    if (!gradeId) return;
+
+    const gradeNum = parseFloat(editValue.value);
+    if (isNaN(gradeNum) || gradeNum < 0 || gradeNum > 100) {
+        alert('Please enter a valid grade between 0 and 100');
+        return;
+    }
+
+    savingCell.value = `${rowIndex}-${subject}`;
+    try {
+        const response = await fetch(`/api/grades/${gradeId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+            body: JSON.stringify({ grade: gradeNum }),
+        });
+
+        if (response.ok) {
+            gradeRecords.value[rowIndex][subject] = gradeNum;
+            recalculateAverage(rowIndex);
+            editingCell.value = null;
+            editValue.value = '';
+        } else {
+            alert('Failed to update grade');
+        }
+    } catch (error) {
+        console.error('Error saving grade:', error);
+        alert('Error saving grade');
+    } finally {
+        savingCell.value = null;
+    }
+};
+
+const recalculateAverage = (rowIndex: number) => {
+    const record = gradeRecords.value[rowIndex];
+    let totalGrade = 0;
+    let gradeCount = 0;
+
+    for (const subject of subjects.value) {
+        const gradeValue = record[subject];
+        if (gradeValue !== null && !isNaN(gradeValue)) {
+            totalGrade += gradeValue;
+            gradeCount++;
+        }
+    }
+
+    record.average = gradeCount > 0 ? Math.round((totalGrade / gradeCount) * 100) / 100 : 0;
 };
 
 const classStats = computed(() => {
@@ -64,6 +130,7 @@ const classStats = computed(() => {
 </script>
 
 <template>
+
     <Head title="Grades" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
@@ -78,17 +145,13 @@ const classStats = computed(() => {
 
             <!-- Stats -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div
-                    class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card"
-                >
+                <div class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card">
                     <p class="text-sm text-muted-foreground mb-2">Class Average</p>
                     <p class="text-2xl font-bold text-blue-600">
                         {{ classStats.averageGrade }}
                     </p>
                 </div>
-                <div
-                    class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card"
-                >
+                <div class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card">
                     <p class="text-sm text-muted-foreground mb-2">
                         Highest Grade
                     </p>
@@ -96,17 +159,13 @@ const classStats = computed(() => {
                         {{ classStats.highestGrade }}
                     </p>
                 </div>
-                <div
-                    class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card"
-                >
+                <div class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card">
                     <p class="text-sm text-muted-foreground mb-2">Lowest Grade</p>
                     <p class="text-2xl font-bold text-red-600">
                         {{ classStats.lowestGrade }}
                     </p>
                 </div>
-                <div
-                    class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card"
-                >
+                <div class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card">
                     <p class="text-sm text-muted-foreground mb-2">Pass Rate</p>
                     <p class="text-2xl font-bold text-green-600">
                         {{ classStats.passRate }}%
@@ -115,7 +174,8 @@ const classStats = computed(() => {
             </div>
 
             <!-- Grades Table -->
-            <div v-if="gradeRecords.length === 0" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
+            <div v-if="gradeRecords.length === 0"
+                class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
                 <div class="flex flex-col items-center justify-center text-center">
                     <BookOpen class="w-16 h-16 text-muted-foreground/30 mb-4" />
                     <h3 class="text-lg font-semibold text-muted-foreground mb-2">
@@ -126,21 +186,16 @@ const classStats = computed(() => {
                     </p>
                 </div>
             </div>
-            <div
-                v-else
-                class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden"
-            >
+            <div v-else class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden">
                 <table class="w-full">
-                    <thead class="bg-muted/50 dark:bg-muted/20 border-b border-sidebar-border/70 dark:border-sidebar-border">
+                    <thead
+                        class="bg-muted/50 dark:bg-muted/20 border-b border-sidebar-border/70 dark:border-sidebar-border">
                         <tr>
                             <th class="text-left px-6 py-3 font-semibold text-sm">
                                 Student Name
                             </th>
-                            <th
-                                v-for="subject in subjects"
-                                :key="subject"
-                                class="text-center px-4 py-3 font-semibold text-sm capitalize"
-                            >
+                            <th v-for="subject in subjects" :key="subject"
+                                class="text-center px-4 py-3 font-semibold text-sm capitalize">
                                 {{ subject.replace(/_/g, ' ') }}
                             </th>
                             <th class="text-center px-6 py-3 font-semibold text-sm">
@@ -149,31 +204,40 @@ const classStats = computed(() => {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr
-                            v-for="(record, index) in gradeRecords"
-                            :key="index"
-                            class="border-b border-sidebar-border/70 dark:border-sidebar-border hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors"
-                        >
+                        <tr v-for="(record, rowIndex) in gradeRecords" :key="rowIndex"
+                            class="border-b border-sidebar-border/70 dark:border-sidebar-border hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors">
                             <td class="px-6 py-4">
                                 <span class="font-medium">{{ record.name }}</span>
                             </td>
-                            <td
-                                v-for="subject in subjects"
-                                :key="subject"
-                                class="text-center px-4 py-4"
-                            >
-                                <span
-                                    v-if="record[subject] !== null"
-                                    :class="getGradeColor(record[subject])"
-                                >
+                            <td v-for="subject in subjects" :key="subject" class="text-center px-4 py-4 relative">
+                                <div v-if="editingCell === `${rowIndex}-${subject}`"
+                                    class="flex items-center justify-center gap-2">
+                                    <input v-model="editValue" type="number" min="0" max="100"
+                                        class="w-16 px-2 py-1 border border-gray-300 rounded text-center dark:bg-gray-700 dark:border-gray-600"
+                                        @keyup.enter="saveGrade(rowIndex, subject)" @keyup.escape="cancelEdit"
+                                        autofocus />
+                                    <button :disabled="savingCell === `${rowIndex}-${subject}`"
+                                        @click="saveGrade(rowIndex, subject)"
+                                        class="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm">
+                                        Save
+                                    </button>
+                                    <button :disabled="savingCell === `${rowIndex}-${subject}`" @click="cancelEdit"
+                                        class="px-2 py-1 bg-gray-400 text-white rounded hover:bg-gray-500 disabled:opacity-50 text-sm">
+                                        Cancel
+                                    </button>
+                                </div>
+                                <span v-else-if="record[subject] !== null" :class="getGradeColor(record[subject])"
+                                    class="cursor-pointer hover:opacity-70"
+                                    @click="startEdit(rowIndex, subject, record[subject])">
                                     {{ record[subject] }}
                                 </span>
-                                <span v-else class="text-gray-400">—</span>
+                                <span v-else class="text-gray-400 cursor-pointer hover:opacity-70"
+                                    @click="startEdit(rowIndex, subject, null)">
+                                    —
+                                </span>
                             </td>
                             <td class="text-center px-6 py-4">
-                                <div
-                                    class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10"
-                                >
+                                <div class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10">
                                     <TrendingUp class="w-4 h-4 text-primary" />
                                     <span :class="getGradeColor(record.average)">
                                         {{ record.average }}
