@@ -10,7 +10,7 @@ class AttendanceRecord extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['student_id', 'student_name', 'status', 'time', 'date'];
+    protected $fillable = ['student_id', 'student_name', 'status', 'time', 'date', 'subject_id'];
 
     protected $casts = [
         'date' => 'date',
@@ -20,5 +20,10 @@ class AttendanceRecord extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 }

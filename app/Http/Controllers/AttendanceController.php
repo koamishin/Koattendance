@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
 use App\Models\Student;
+use App\Models\Subject;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
@@ -22,6 +23,8 @@ class AttendanceController extends Controller
 
             // Use the provided date or get the latest date
             $date = request('date') ? \Carbon\Carbon::parse(request('date')) : (AttendanceRecord::orderBy('date', 'desc')->first()?->date ?? now());
+            
+            $subjectId = request('subjectId') ? (int) request('subjectId') : null;
 
             AttendanceRecord::create([
                 'student_id' => $student->id,
@@ -29,6 +32,7 @@ class AttendanceController extends Controller
                 'status' => request('status'),
                 'date' => $date,
                 'time' => now(),
+                'subject_id' => $subjectId,
             ]);
 
             return back()->with('success', 'Attendance marked successfully');
@@ -49,13 +53,15 @@ class AttendanceController extends Controller
 
     public function index(): JsonResponse
     {
-        $allRecords = AttendanceRecord::orderBy('date', 'desc')->get();
+        $allRecords = AttendanceRecord::with('subject')->orderBy('date', 'desc')->get();
         Log::info('Attendance Records Count: '.$allRecords->count());
         
-        // Get selected date from query parameter or use today's date
+        // Get selected date and subject from query parameters
         $selectedDate = request('date') 
             ? \Carbon\Carbon::parse(request('date')) 
             : \Carbon\Carbon::today();
+        
+        $selectedSubjectId = request('subjectId') ? (int) request('subjectId') : null;
         
         $latestDate = $allRecords->first()?->date;
 
@@ -79,17 +85,27 @@ class AttendanceController extends Controller
             ->reverse()
             ->values();
 
-        // Get all students
+        // Get all subjects
+        $subjects = Subject::all()->map(fn ($subject) => [
+            'id' => $subject->id,
+            'name' => $subject->name,
+        ])->values();
+
+        // Get all students (show all students for any subject)
+        // The subject_id is just used to organize attendance records by subject
         $students = \App\Models\Student::all();
 
-        // Build attendance map for the selected date
+        // Build attendance map for the selected date and subject
         $attendanceMap = $allRecords
             ->when($selectedDate, function ($collection) use ($selectedDate) {
                 return $collection->filter(fn ($record) => $record->date->toDateString() === $selectedDate->toDateString());
             })
+            ->when($selectedSubjectId, function ($collection) use ($selectedSubjectId) {
+                return $collection->filter(fn ($record) => $record->subject_id === $selectedSubjectId);
+            })
             ->keyBy('student_name');
 
-        // Create records for all students
+        // Create records for filtered students
         $records = $students->map(function ($student) use ($attendanceMap, $selectedDate) {
             $record = $attendanceMap->get($student->name);
 
@@ -134,6 +150,8 @@ class AttendanceController extends Controller
             'selectedDate' => $selectedDate ? $selectedDate->format('F d, Y') : null,
             'latestDate' => $latestDate ? $latestDate->format('F d, Y') : null,
             'availableDates' => $availableDates,
+            'subjects' => $subjects,
+            'selectedSubjectId' => $selectedSubjectId,
         ]);
     }
 }

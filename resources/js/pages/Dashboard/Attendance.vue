@@ -28,6 +28,8 @@ const selectedDate = ref<string | null>(null);
 const selectedDateValue = ref<string | null>(null);
 const latestDate = ref<string | null>(null);
 const availableDates = ref<string[]>([]);
+const subjects = ref<any[]>([]);
+const selectedSubjectId = ref<number | null>(null);
 const editingId = ref<number | null>(null);
 const editingStatus = ref<string>('');
 
@@ -35,11 +37,14 @@ onMounted(async () => {
     await loadAttendance();
 });
 
-const loadAttendance = async (date?: string) => {
+const loadAttendance = async (date?: string, subjectId?: number | null) => {
     try {
         const url = new URL('/api/attendance', window.location.origin);
         if (date) {
             url.searchParams.append('date', date);
+        }
+        if (subjectId) {
+            url.searchParams.append('subjectId', subjectId.toString());
         }
         const response = await fetch(url.toString());
         const data = await response.json();
@@ -49,6 +54,8 @@ const loadAttendance = async (date?: string) => {
         selectedDate.value = data.selectedDate;
         latestDate.value = data.latestDate;
         availableDates.value = data.availableDates;
+        subjects.value = data.subjects;
+        selectedSubjectId.value = data.selectedSubjectId;
         
         // Extract date value from formatted string (e.g., "January 10, 2026" -> "2026-01-10")
         if (data.selectedDate) {
@@ -64,7 +71,12 @@ const loadAttendance = async (date?: string) => {
 };
 
 const onDateChange = (date: string) => {
-    loadAttendance(date);
+    loadAttendance(date, selectedSubjectId.value);
+};
+
+const onSubjectChange = (subjectId: number | null) => {
+    selectedSubjectId.value = subjectId;
+    loadAttendance(selectedDateValue.value || undefined, subjectId);
 };
 
 const goToPreviousDate = () => {
@@ -91,10 +103,11 @@ const startEditing = (record: any, index: number) => {
 const updateStatus = (record: any, index: number, newStatus: string) => {
     const payload: any = { status: newStatus };
     
-    // For unmarked students (id is null), pass the student name and date
+    // For unmarked students (id is null), pass the student name, date, and subject
     if (!record.id) {
         payload.studentName = record.name;
         payload.date = selectedDateValue.value;
+        payload.subjectId = selectedSubjectId.value;
     }
 
     router.post(
@@ -104,7 +117,7 @@ const updateStatus = (record: any, index: number, newStatus: string) => {
             preserveState: true,
             onFinish: () => {
                 editingId.value = null;
-                loadAttendance(selectedDateValue.value);
+                loadAttendance(selectedDateValue.value, selectedSubjectId.value);
             },
         }
     );
@@ -159,8 +172,24 @@ const getStatusBadge = (status: string) => {
             <div>
                 <h1 class="text-3xl font-bold mb-4">Attendance Records</h1>
                 
-                <!-- Date Selection Controls -->
+                <!-- Subject Selection (First) -->
                 <div class="flex items-center gap-4 mb-6 flex-wrap">
+                    <div class="flex items-center gap-2">
+                        <select
+                            :value="selectedSubjectId || ''"
+                            @change="(e) => onSubjectChange(e.target.value ? parseInt((e.target as HTMLSelectElement).value) : null)"
+                            class="px-3 py-2 border border-sidebar-border/70 rounded-lg dark:border-sidebar-border dark:bg-card dark:text-white bg-white text-black font-medium"
+                        >
+                            <option value="">Select a Subject</option>
+                            <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
+                                {{ subject.name }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Date Selection Controls (Appears after subject selection) -->
+                <div v-if="selectedSubjectId" class="flex items-center gap-4 mb-6 flex-wrap">
                     <button
                         @click="goToPreviousDate"
                         :disabled="availableDates.length === 0 || selectedDateValue === availableDates[availableDates.length - 1]"
@@ -193,8 +222,21 @@ const getStatusBadge = (status: string) => {
                 </div>
             </div>
 
-            <!-- Stats -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <!-- Empty State -->
+            <div v-if="!selectedSubjectId" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
+                <div class="flex flex-col items-center justify-center text-center">
+                    <Calendar class="w-16 h-16 text-muted-foreground/30 mb-4" />
+                    <h3 class="text-lg font-semibold text-muted-foreground mb-2">
+                        Select a Subject
+                    </h3>
+                    <p class="text-sm text-muted-foreground max-w-md">
+                        Choose a subject above to view and mark attendance for enrolled students.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Stats (Appears after subject selection) -->
+            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div
                     class="rounded-lg border border-sidebar-border/70 p-4 dark:border-sidebar-border bg-card"
                 >
@@ -236,8 +278,20 @@ const getStatusBadge = (status: string) => {
                 </div>
             </div>
 
-            <!-- Attendance Table by Day -->
-            <div v-if="attendanceRecords.length === 0" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
+            <!-- Attendance Table by Day (Appears after subject and date selection) -->
+            <div v-if="selectedSubjectId && !selectedDateValue" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
+                <div class="flex flex-col items-center justify-center text-center">
+                    <Calendar class="w-16 h-16 text-muted-foreground/30 mb-4" />
+                    <h3 class="text-lg font-semibold text-muted-foreground mb-2">
+                        Select a Date
+                    </h3>
+                    <p class="text-sm text-muted-foreground max-w-md">
+                        Choose a date to view and mark attendance.
+                    </p>
+                </div>
+            </div>
+
+            <div v-else-if="selectedSubjectId && attendanceRecords.length === 0" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border p-12">
                 <div class="flex flex-col items-center justify-center text-center">
                     <Calendar class="w-16 h-16 text-muted-foreground/30 mb-4" />
                     <h3 class="text-lg font-semibold text-muted-foreground mb-2">
@@ -248,7 +302,7 @@ const getStatusBadge = (status: string) => {
                     </p>
                 </div>
             </div>
-            <div v-else class="flex flex-col gap-6">
+            <div v-else-if="selectedSubjectId" class="flex flex-col gap-6">
                 <div v-for="(records, day) in groupedRecords" :key="day" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden">
                     <div class="bg-muted/50 dark:bg-muted/20 px-6 py-4 border-b border-sidebar-border/70 dark:border-sidebar-border">
                         <h2 class="text-lg font-semibold">{{ day }}</h2>

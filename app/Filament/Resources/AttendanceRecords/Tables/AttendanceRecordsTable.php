@@ -6,7 +6,9 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use App\Models\Subject;
 
 class AttendanceRecordsTable
 {
@@ -17,6 +19,10 @@ class AttendanceRecordsTable
                 TextColumn::make('student_name')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('subject.name')
+                    ->label('Subject')
+                    ->sortable()
+                    ->searchable(),
                 TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -35,7 +41,9 @@ class AttendanceRecordsTable
                     ->sortable(),
             ])
             ->filters([
-                //
+                SelectFilter::make('subject_id')
+                    ->label('Subject')
+                    ->options(Subject::all()->pluck('name', 'id')),
             ])
             ->recordActions([
                 EditAction::make(),
