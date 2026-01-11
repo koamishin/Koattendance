@@ -32,6 +32,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('api/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'getStats'])->name('api.dashboard.stats');
     Route::get('api/dashboard/attendance-summary', [\App\Http\Controllers\DashboardController::class, 'getAttendanceSummary'])->name('api.dashboard.attendance-summary');
     Route::get('api/dashboard/grade-summary', [\App\Http\Controllers\DashboardController::class, 'getGradeSummary'])->name('api.dashboard.grade-summary');
+    Route::get('api/dashboard/weekly-attendance', [\App\Http\Controllers\DashboardController::class, 'getWeeklyAttendance'])->name('api.dashboard.weekly-attendance');
+    Route::get('api/dashboard/subject-performance', [\App\Http\Controllers\DashboardController::class, 'getSubjectPerformance'])->name('api.dashboard.subject-performance');
     Route::post('attendance/{id}/update-status', [\App\Http\Controllers\AttendanceController::class, 'updateStatus'])->name('attendance.updateStatus');
 });
 

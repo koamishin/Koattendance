@@ -98,17 +98,77 @@ class DashboardController extends Controller
             'grade' => round($student->avg_grade, 2),
         ]);
 
+        // Count unique students by average grade
+        $studentAverages = Grade::selectRaw('student_name, AVG(CAST(grade AS REAL)) as avg_grade')
+            ->groupBy('student_name')
+            ->get();
+
         $gradeDistribution = [
-            'A (90-100)' => Grade::whereRaw('CAST(grade AS REAL) >= 90')->count(),
-            'B (80-89)' => Grade::whereRaw('CAST(grade AS REAL) >= 80 AND CAST(grade AS REAL) < 90')->count(),
-            'C (70-79)' => Grade::whereRaw('CAST(grade AS REAL) >= 70 AND CAST(grade AS REAL) < 80')->count(),
-            'D (60-69)' => Grade::whereRaw('CAST(grade AS REAL) >= 60 AND CAST(grade AS REAL) < 70')->count(),
-            'F (<60)' => Grade::whereRaw('CAST(grade AS REAL) < 60')->count(),
+            'A (90-100)' => $studentAverages->filter(fn ($s) => $s->avg_grade >= 90)->count(),
+            'B (80-89)' => $studentAverages->filter(fn ($s) => $s->avg_grade >= 80 && $s->avg_grade < 90)->count(),
+            'C (70-79)' => $studentAverages->filter(fn ($s) => $s->avg_grade >= 70 && $s->avg_grade < 80)->count(),
+            'D (60-69)' => $studentAverages->filter(fn ($s) => $s->avg_grade >= 60 && $s->avg_grade < 70)->count(),
+            'F (<60)' => $studentAverages->filter(fn ($s) => $s->avg_grade < 60)->count(),
         ];
 
         return response()->json([
             'topGrades' => $topGrades,
             'gradeDistribution' => $gradeDistribution,
+        ]);
+    }
+
+    public function getWeeklyAttendance(): JsonResponse
+    {
+        $today = \Carbon\Carbon::today();
+        
+        // Get the Monday of the current week
+        $monday = $today->copy()->startOfWeek(\Carbon\Carbon::MONDAY);
+        
+        // Define the days (Monday to Saturday)
+        $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        $weeklyData = [];
+        
+        foreach ($days as $index => $dayName) {
+            $dayDate = $monday->copy()->addDays($index);
+            
+            $dayRecords = AttendanceRecord::whereDate('date', $dayDate)->get();
+            
+            $present = $dayRecords->where('status', 'present')->count();
+            $absent = $dayRecords->where('status', 'absent')->count();
+            $late = $dayRecords->where('status', 'late')->count();
+            
+            $weeklyData[] = [
+                'day' => substr($dayName, 0, 3),
+                'date' => $dayDate->format('Y-m-d'),
+                'present' => $present,
+                'absent' => $absent,
+                'late' => $late,
+                'total' => $present + $absent + $late,
+            ];
+        }
+        
+        return response()->json([
+            'weeklyAttendance' => $weeklyData,
+        ]);
+    }
+
+    public function getSubjectPerformance(): JsonResponse
+    {
+        // Get all unique subjects and calculate average and max grade for each
+        $subjectPerformance = Grade::join('subjects', 'grades.subject_id', '=', 'subjects.id')
+            ->selectRaw('subjects.name as subject, AVG(CAST(grades.grade AS REAL)) as avg_grade, MAX(CAST(grades.grade AS REAL)) as max_grade')
+            ->groupBy('subjects.id', 'subjects.name')
+            ->orderBy('subjects.name')
+            ->get()
+            ->map(fn ($subject) => [
+                'subject' => $subject->subject,
+                'avgGrade' => round($subject->avg_grade, 2),
+                'maxGrade' => (int) $subject->max_grade,
+            ])
+            ->values();
+
+        return response()->json([
+            'subjectPerformance' => $subjectPerformance,
         ]);
     }
 }

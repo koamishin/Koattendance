@@ -26,39 +26,32 @@ const gradeDistribution = ref<Record<string, number>>({});
 const latestDate = ref<string | null>(null);
 const isLoading = ref(true);
 
-const weeklyAttendance = [
-    { day: 'Mon', present: 115, absent: 5 },
-    { day: 'Tue', present: 118, absent: 2 },
-    { day: 'Wed', present: 112, absent: 8 },
-    { day: 'Thu', present: 120, absent: 0 },
-    { day: 'Fri', present: 110, absent: 10 },
-];
-
-const subjectPerformance = [
-    { subject: 'Mathematics', avgGrade: 86.5, maxGrade: 98 },
-    { subject: 'English', avgGrade: 84.2, maxGrade: 95 },
-    { subject: 'Science', avgGrade: 85.8, maxGrade: 97 },
-    { subject: 'History', avgGrade: 83.5, maxGrade: 96 },
-    { subject: 'PE', avgGrade: 88.1, maxGrade: 100 },
-];
+const weeklyAttendance = ref<any[]>([]);
+const subjectPerformance = ref<any[]>([]);
 
 onMounted(async () => {
     try {
-        const [statsRes, attendanceRes, gradeRes] = await Promise.all([
+        const [statsRes, attendanceRes, gradeRes, weeklyRes, subjectRes] = await Promise.all([
             fetch('/api/dashboard/stats'),
             fetch('/api/dashboard/attendance-summary'),
             fetch('/api/dashboard/grade-summary'),
+            fetch('/api/dashboard/weekly-attendance'),
+            fetch('/api/dashboard/subject-performance'),
         ]);
 
         const statsData = await statsRes.json();
         const attendanceData = await attendanceRes.json();
         const gradeData = await gradeRes.json();
+        const weeklyData = await weeklyRes.json();
+        const subjectData = await subjectRes.json();
 
         stats.value = statsData.stats;
         latestDate.value = statsData.latestDate;
         recentRecords.value = attendanceData.recentRecords;
         topGrades.value = gradeData.topGrades;
         gradeDistribution.value = gradeData.gradeDistribution;
+        weeklyAttendance.value = weeklyData.weeklyAttendance;
+        subjectPerformance.value = subjectData.subjectPerformance;
     } catch (error) {
         console.error('Error fetching dashboard data:', error);
     } finally {
@@ -278,7 +271,11 @@ const getGradeDistributionList = () => {
                 >
                     <h3 class="text-lg font-bold mb-6">Weekly Attendance Trend</h3>
 
-                    <div class="space-y-4">
+                    <div v-if="weeklyAttendance.length === 0" class="text-center py-8 text-muted-foreground">
+                        No attendance data available
+                    </div>
+
+                    <div v-else class="space-y-4">
                         <div
                             v-for="week in weeklyAttendance"
                             :key="week.day"
@@ -290,7 +287,7 @@ const getGradeDistributionList = () => {
                             <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-2">
                                     <div class="flex-1 h-6 bg-green-500 rounded transition-all hover:bg-green-600"
-                                        :style="{ width: (week.present / 120) * 100 + '%' }"
+                                        :style="{ width: week.total > 0 ? (week.present / week.total) * 100 + '%' : '0%' }"
                                     ></div>
                                     <span class="text-xs font-semibold w-8">
                                         {{ week.present }}
@@ -301,7 +298,7 @@ const getGradeDistributionList = () => {
                                     class="flex items-center gap-2"
                                 >
                                     <div class="flex-1 h-2 bg-red-500 rounded"
-                                        :style="{ width: (week.absent / 120) * 100 + '%' }"
+                                        :style="{ width: week.total > 0 ? (week.absent / week.total) * 100 + '%' : '0%' }"
                                     ></div>
                                     <span class="text-xs text-muted-foreground w-8">
                                         {{ week.absent }}
@@ -311,19 +308,21 @@ const getGradeDistributionList = () => {
                         </div>
                     </div>
 
-                    <div class="flex gap-6 mt-6 pt-6 border-t border-sidebar-border/70 dark:border-sidebar-border">
+                    <div v-if="weeklyAttendance.length > 0" class="flex gap-6 mt-6 pt-6 border-t border-sidebar-border/70 dark:border-sidebar-border">
                         <div>
                             <p class="text-xs text-muted-foreground mb-1">
                                 Avg Present
                             </p>
                             <p class="text-lg font-bold text-green-600">
                                 {{
-                                    (
-                                        weeklyAttendance.reduce(
-                                            (sum, w) => sum + w.present,
-                                            0
-                                        ) / weeklyAttendance.length
-                                    ).toFixed(0)
+                                    weeklyAttendance.length > 0
+                                        ? (
+                                            weeklyAttendance.reduce(
+                                                (sum: number, w) => sum + w.present,
+                                                0
+                                            ) / weeklyAttendance.length
+                                        ).toFixed(0)
+                                        : 0
                                 }}
                             </p>
                         </div>
@@ -333,12 +332,14 @@ const getGradeDistributionList = () => {
                             </p>
                             <p class="text-lg font-bold text-red-600">
                                 {{
-                                    (
-                                        weeklyAttendance.reduce(
-                                            (sum, w) => sum + w.absent,
-                                            0
-                                        ) / weeklyAttendance.length
-                                    ).toFixed(1)
+                                    weeklyAttendance.length > 0
+                                        ? (
+                                            weeklyAttendance.reduce(
+                                                (sum: number, w) => sum + w.absent,
+                                                0
+                                            ) / weeklyAttendance.length
+                                        ).toFixed(1)
+                                        : 0
                                 }}
                             </p>
                         </div>
@@ -362,7 +363,7 @@ const getGradeDistributionList = () => {
                         <div
                             v-for="grade in getGradeDistributionList()"
                             :key="grade.range"
-                            class="flex items-end gap-4"
+                            class="flex items-center gap-4"
                         >
                             <div class="w-20 text-sm font-semibold">
                                 {{ grade.range }}
@@ -370,7 +371,7 @@ const getGradeDistributionList = () => {
                             <div class="flex-1">
                                 <div class="flex items-center gap-3">
                                     <div class="flex-1 h-8 bg-gradient-to-r from-blue-400 to-blue-600 rounded transition-all hover:shadow-lg"
-                                        :style="{ width: (grade.percentage * 2.5) + '%' }"
+                                        :style="{ width: grade.percentage + '%' }"
                                     ></div>
                                     <span class="text-sm font-semibold w-12 text-right">
                                         {{ grade.count }}
@@ -404,7 +405,11 @@ const getGradeDistributionList = () => {
             >
                 <h3 class="text-lg font-bold mb-6">Subject Performance</h3>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div v-if="subjectPerformance.length === 0" class="text-center py-8 text-muted-foreground">
+                    No subject data available
+                </div>
+
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <div
                         v-for="subject in subjectPerformance"
                         :key="subject.subject"

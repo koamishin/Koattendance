@@ -23,6 +23,8 @@ class AttendanceRecordsTable
                         'present' => 'success',
                         'absent' => 'danger',
                         'late' => 'warning',
+                        'unmarked' => 'gray',
+                        default => 'gray',
                     })
                     ->sortable(),
                 TextColumn::make('time')
