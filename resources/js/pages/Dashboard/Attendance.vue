@@ -49,9 +49,16 @@ const startEditing = (record: any, index: number) => {
 };
 
 const updateStatus = (record: any, index: number, newStatus: string) => {
+    const payload: any = { status: newStatus };
+    
+    // For unmarked students (id is null), pass the student name
+    if (!record.id) {
+        payload.studentName = record.name;
+    }
+
     router.post(
-        `/attendance/${record.id}/update-status`,
-        { status: newStatus },
+        `/attendance/${record.id || 'null'}/update-status`,
+        payload,
         {
             preserveState: true,
             onFinish: () => {

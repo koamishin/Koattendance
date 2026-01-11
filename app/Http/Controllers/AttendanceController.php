@@ -3,16 +3,39 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
+use App\Models\Student;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
 {
-    public function updateStatus($id)
+    public function updateStatus($id): \Illuminate\Http\Response | \Illuminate\Http\RedirectResponse
     {
+        // Handle unmarked students (id will be null, but studentName will be provided)
+        if ($id === 'null' || $id == null) {
+            $studentName = request('studentName');
+            $student = Student::where('name', $studentName)->first();
+
+            if (! $student) {
+                return back()->with('error', 'Student not found');
+            }
+
+            $latestDate = AttendanceRecord::orderBy('date', 'desc')->first()?->date;
+
+            AttendanceRecord::create([
+                'student_id' => $student->id,
+                'student_name' => $studentName,
+                'status' => request('status'),
+                'date' => $latestDate ?? now(),
+                'time' => now(),
+            ]);
+
+            return back()->with('success', 'Attendance marked successfully');
+        }
+
         $record = AttendanceRecord::find($id);
 
-        if (!$record) {
+        if (! $record) {
             return back()->with('error', 'Record not found');
         }
 
@@ -26,7 +49,7 @@ class AttendanceController extends Controller
     public function index(): JsonResponse
     {
         $allRecords = AttendanceRecord::orderBy('date', 'desc')->get();
-        Log::info('Attendance Records Count: ' . $allRecords->count());
+        Log::info('Attendance Records Count: '.$allRecords->count());
         $latestDate = $allRecords->first()?->date;
 
         // Get all students
