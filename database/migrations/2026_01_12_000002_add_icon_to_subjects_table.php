@@ -11,9 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('seatings', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('subjects', function (Blueprint $table) {
+            $table->string('icon')->nullable()->after('description');
         });
     }
 
@@ -22,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('seatings');
+        Schema::table('subjects', function (Blueprint $table) {
+            $table->dropColumn('icon');
+        });
     }
 };

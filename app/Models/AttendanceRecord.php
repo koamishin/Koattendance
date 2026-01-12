@@ -10,11 +10,21 @@ class AttendanceRecord extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['student_id', 'student_name', 'status', 'time', 'date', 'subject_id'];
+    protected $fillable = [
+        'session_id',
+        'student_id',
+        'status',
+        'timestamp',
+        'recorded_by',
+        'scan_event_id',
+        'device_info',
+        'notes',
+        'subject_id',
+    ];
 
     protected $casts = [
-        'date' => 'date',
-        'time' => 'datetime:H:i',
+        'timestamp' => 'datetime',
+        'device_info' => 'array',
     ];
 
     public function student(): BelongsTo
@@ -25,5 +35,20 @@ class AttendanceRecord extends Model
     public function subject(): BelongsTo
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(ClassSession::class);
+    }
+
+    public function scanEvent(): BelongsTo
+    {
+        return $this->belongsTo(QrScanEvent::class);
+    }
+
+    public function recorder(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
     }
 }

@@ -11,6 +11,7 @@ class SeatPlan extends Model
 
     protected $fillable = [
         'section_id',
+        'subject_id',
         'name',
         'layout',
     ];
@@ -22,6 +23,11 @@ class SeatPlan extends Model
     public function section()
     {
         return $this->belongsTo(Section::class);
+    }
+
+    public function subject()
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function seatAllocations()

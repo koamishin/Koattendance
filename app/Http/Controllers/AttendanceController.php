@@ -6,6 +6,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Student;
 use App\Models\Subject;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
@@ -16,6 +17,13 @@ class AttendanceController extends Controller
         if ($id === 'null' || $id == null) {
             $studentName = request('studentName');
             $student = Student::where('name', $studentName)->first();
+            
+            // If student is not found by name, try to find by ID if provided in request context
+            // Or if we change the frontend to pass student ID.
+            if (!$student) {
+                 // Try to find by ID if we have it in the request payload or query
+                 // Ideally frontend should send student_id for creation.
+            }
 
             if (! $student) {
                 return back()->with('error', 'Student not found');
@@ -28,7 +36,7 @@ class AttendanceController extends Controller
 
             AttendanceRecord::create([
                 'student_id' => $student->id,
-                'student_name' => $studentName,
+                'student_name' => $studentName, // We should deprecate this
                 'status' => request('status'),
                 'date' => $date,
                 'time' => now(),
@@ -53,66 +61,47 @@ class AttendanceController extends Controller
 
     public function index(): JsonResponse
     {
-        $allRecords = AttendanceRecord::with('subject')->orderBy('date', 'desc')->get();
-        Log::info('Attendance Records Count: '.$allRecords->count());
-        
-        // Get selected date and subject from query parameters
+        $selectedSubjectId = request('subjectId') ? (int) request('subjectId') : null;
         $selectedDate = request('date') 
             ? \Carbon\Carbon::parse(request('date')) 
             : \Carbon\Carbon::today();
-        
-        $selectedSubjectId = request('subjectId') ? (int) request('subjectId') : null;
-        
-        $latestDate = $allRecords->first()?->date;
 
-        // Get all unique dates from records for the date selector
-        $recordDates = $allRecords
-            ->pluck('date')
-            ->unique()
-            ->map(fn ($date) => $date->format('Y-m-d'));
-
-        // Add today and the next 30 days
-        $today = \Carbon\Carbon::today();
-        $futureDates = collect();
-        for ($i = 0; $i <= 30; $i++) {
-            $futureDates->push($today->copy()->addDays($i)->format('Y-m-d'));
+        // 1. Get Enrolled Students for the selected Subject
+        $enrolledStudents = collect();
+        if ($selectedSubjectId) {
+            $subject = Subject::with('students')->find($selectedSubjectId);
+            if ($subject) {
+                $enrolledStudents = $subject->students;
+            }
+        } else {
+            // If no subject selected, maybe show all students? 
+            // Or better, return empty list until subject is picked.
+            // For backward compatibility or "Overview" mode, we might fetch all.
+            // But user wants "Per Subject".
+            // Let's return empty if no subject is selected, forcing selection.
+            $enrolledStudents = collect(); 
         }
 
-        $availableDates = $recordDates
-            ->merge($futureDates)
-            ->unique()
-            ->sort()
-            ->reverse()
-            ->values();
+        // 2. Get Attendance Records for the selected date and subject
+        $recordsQuery = AttendanceRecord::query()
+            ->with('student')
+            ->whereDate('date', $selectedDate);
 
-        // Get all subjects
-        $subjects = Subject::all()->map(fn ($subject) => [
-            'id' => $subject->id,
-            'name' => $subject->name,
-        ])->values();
+        if ($selectedSubjectId) {
+            $recordsQuery->where('subject_id', $selectedSubjectId);
+        }
 
-        // Get all students (show all students for any subject)
-        // The subject_id is just used to organize attendance records by subject
-        $students = \App\Models\Student::all();
+        $attendanceRecords = $recordsQuery->get()->keyBy('student_id');
 
-        // Build attendance map for the selected date and subject
-        $attendanceMap = $allRecords
-            ->when($selectedDate, function ($collection) use ($selectedDate) {
-                return $collection->filter(fn ($record) => $record->date->toDateString() === $selectedDate->toDateString());
-            })
-            ->when($selectedSubjectId, function ($collection) use ($selectedSubjectId) {
-                return $collection->filter(fn ($record) => $record->subject_id === $selectedSubjectId);
-            })
-            ->keyBy('student_name');
-
-        // Create records for filtered students
-        $records = $students->map(function ($student) use ($attendanceMap, $selectedDate) {
-            $record = $attendanceMap->get($student->name);
+        // 3. Merge Enrolled Students with Attendance Records
+        $mergedRecords = $enrolledStudents->map(function ($student) use ($attendanceRecords, $selectedDate) {
+            $record = $attendanceRecords->get($student->id);
 
             if ($record) {
                 return [
                     'id' => $record->id,
-                    'name' => $student->name,
+                    'student_id' => $student->id,
+                    'name' => $student->first_name . ' ' . $student->last_name, // Using new fields
                     'status' => $record->status,
                     'date' => $record->date->format('M d, Y'),
                     'dayOfWeek' => $record->date->format('l'),
@@ -121,37 +110,104 @@ class AttendanceController extends Controller
             }
 
             return [
-                'id' => null,
-                'name' => $student->name,
+                'id' => null, // No record ID yet
+                'student_id' => $student->id,
+                'name' => $student->first_name . ' ' . $student->last_name,
                 'status' => 'unmarked',
-                'date' => $selectedDate ? $selectedDate->format('M d, Y') : 'N/A',
-                'dayOfWeek' => $selectedDate ? $selectedDate->format('l') : 'N/A',
+                'date' => $selectedDate->format('M d, Y'),
+                'dayOfWeek' => $selectedDate->format('l'),
                 'time' => '-',
             ];
         })->sortBy('name')->values();
 
-        // Group records by day of week (Monday to Saturday)
-        $dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        $groupedRecords = $records->groupBy('dayOfWeek')->sortBy(function ($group, $day) use ($dayOrder) {
-            return array_search($day, $dayOrder, true);
-        });
-
+        // Stats calculation based on merged records (enrolled students)
         $stats = [
-            'present' => $records->where('status', 'present')->count(),
-            'absent' => $records->where('status', 'absent')->count(),
-            'late' => $records->where('status', 'late')->count(),
-            'total' => $records->count(),
+            'present' => $mergedRecords->where('status', 'present')->count(),
+            'absent' => $mergedRecords->where('status', 'absent')->count(),
+            'late' => $mergedRecords->where('status', 'late')->count(),
+            'unmarked' => $mergedRecords->where('status', 'unmarked')->count(),
+            'total' => $mergedRecords->count(),
         ];
 
+        // Dates for selection (this might need to be smarter, e.g., session dates)
+        // For now, keep the "Last 30 days + Future" logic or just rely on date picker
+        $today = \Carbon\Carbon::today();
+        $availableDates = [];
+        for ($i = 0; $i <= 30; $i++) {
+            $availableDates[] = $today->copy()->addDays($i)->format('Y-m-d');
+        }
+        // Also add dates that have records
+        $existingDates = AttendanceRecord::where('subject_id', $selectedSubjectId)
+            ->pluck('date')
+            ->map(fn($d) => $d->format('Y-m-d'))
+            ->toArray();
+        
+        $availableDates = array_unique(array_merge($existingDates, $availableDates));
+        rsort($availableDates);
+
+        // Get all subjects for dropdown
+        $subjects = Subject::all()->map(fn ($subject) => [
+            'id' => $subject->id,
+            'name' => $subject->name,
+            'students_count' => $subject->students()->count(),
+        ])->values();
+
         return response()->json([
-            'attendanceRecords' => $records,
-            'groupedRecords' => $groupedRecords,
+            'attendanceRecords' => $mergedRecords,
             'stats' => $stats,
-            'selectedDate' => $selectedDate ? $selectedDate->format('F d, Y') : null,
-            'latestDate' => $latestDate ? $latestDate->format('F d, Y') : null,
-            'availableDates' => $availableDates,
+            'selectedDate' => $selectedDate->format('Y-m-d'),
+            'availableDates' => array_values($availableDates),
             'subjects' => $subjects,
             'selectedSubjectId' => $selectedSubjectId,
         ]);
+    }
+
+    /**
+     * Enroll a student in a subject.
+     */
+    public function enroll(Request $request)
+    {
+        $request->validate([
+            'subject_id' => 'required|exists:subjects,id',
+            'student_id' => 'required|exists:students,id',
+        ]);
+
+        $subject = Subject::findOrFail($request->subject_id);
+        
+        // Check if already attached
+        if (!$subject->students()->where('student_id', $request->student_id)->exists()) {
+            $subject->students()->attach($request->student_id);
+            return back()->with('success', 'Student added to class successfully.');
+        }
+
+        return back()->with('info', 'Student is already enrolled in this class.');
+    }
+    
+    /**
+     * Search students not enrolled in a subject.
+     */
+    public function searchStudents(Request $request)
+    {
+        $search = $request->get('query');
+        $subjectId = $request->get('subject_id');
+
+        return Student::query()
+            ->where(function($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('student_id', 'like', "%{$search}%");
+            })
+            ->whereDoesntHave('subjects', function($q) use ($subjectId) {
+                $q->where('subjects.id', $subjectId);
+            })
+            ->limit(10)
+            ->get()
+            ->map(function($student) {
+                return [
+                    'id' => $student->id,
+                    'name' => $student->first_name . ' ' . $student->last_name,
+                    'student_id' => $student->student_id,
+                ];
+            });
     }
 }

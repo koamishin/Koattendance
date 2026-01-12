@@ -3,6 +3,12 @@ import type { LucideIcon } from 'lucide-vue-next';
 
 export interface Auth {
     user: User;
+    roles: {
+        isAdmin: boolean;
+        isTeacher: boolean;
+        isStudent: boolean;
+        isGuardian: boolean;
+    };
 }
 
 export interface BreadcrumbItem {
@@ -34,6 +40,18 @@ export interface User {
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
+    student?: {
+        id: number;
+        student_id: string;
+    };
+    teacher?: {
+        id: number;
+        subjects?: Array<{
+            id: number;
+            name: string;
+            icon?: string;
+        }>;
+    };
 }
 
 export type BreadcrumbItemType = BreadcrumbItem;

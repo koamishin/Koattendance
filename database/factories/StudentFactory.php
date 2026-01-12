@@ -17,9 +17,11 @@ class StudentFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
+            'user_id' => \App\Models\User::factory(),
+            'first_name' => fake()->firstName(),
+            'last_name' => fake()->lastName(),
             'student_id' => fake()->unique()->numerify('STU####'),
+            'qr_code_active' => true,
         ];
     }
 }

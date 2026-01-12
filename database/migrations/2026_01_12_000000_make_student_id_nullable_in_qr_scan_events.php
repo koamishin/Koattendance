@@ -11,9 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('seating_arrangements', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('qr_scan_events', function (Blueprint $table) {
+            $table->foreignId('student_id')->nullable()->change();
         });
     }
 
@@ -22,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('seating_arrangements');
+        Schema::table('qr_scan_events', function (Blueprint $table) {
+            $table->foreignId('student_id')->nullable(false)->change();
+        });
     }
 };

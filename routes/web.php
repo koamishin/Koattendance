@@ -23,6 +23,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Dashboard/Attendance');
     })->name('dashboard.attendance');
 
+    Route::get('dashboard/subjects', function () {
+        return Inertia::render('Dashboard/Subjects/Index');
+    })->name('dashboard.subjects');
+
+    Route::get('dashboard/subjects/{id}', function ($id) {
+        return Inertia::render('Dashboard/Subjects/Show', ['subjectId' => $id]);
+    })->name('dashboard.subjects.show');
+
     Route::get('dashboard/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('dashboard.grades');
     Route::patch('dashboard/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('grades.update');
     Route::get('api/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('api.students');
@@ -36,6 +44,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('api/dashboard/weekly-attendance', [\App\Http\Controllers\DashboardController::class, 'getWeeklyAttendance'])->name('api.dashboard.weekly-attendance');
     Route::get('api/dashboard/subject-performance', [\App\Http\Controllers\DashboardController::class, 'getSubjectPerformance'])->name('api.dashboard.subject-performance');
     Route::post('attendance/{id}/update-status', [\App\Http\Controllers\AttendanceController::class, 'updateStatus'])->name('attendance.updateStatus');
+    
+    // Attendance Management
+    Route::post('api/attendance/enroll', [\App\Http\Controllers\AttendanceController::class, 'enroll'])->name('api.attendance.enroll');
+    Route::get('api/attendance/search-students', [\App\Http\Controllers\AttendanceController::class, 'searchStudents'])->name('api.attendance.search-students');
+
+    // Subject Management
+    Route::apiResource('api/subjects', \App\Http\Controllers\Api\SubjectController::class);
+
+    // QR Code Attendance Routes
+    Route::get('api/attendance/sessions/today', [\App\Http\Controllers\Api\ClassSessionController::class, 'today'])->name('api.sessions.today');
+    Route::post('api/attendance/scan', [\App\Http\Controllers\Api\AttendanceScanController::class, 'scan'])->name('api.attendance.scan');
+    Route::get('api/students/{student}/qr-code', [\App\Http\Controllers\Api\StudentQrController::class, 'show'])->name('api.students.qr-code');
+    Route::post('api/students/{student}/regenerate-qr', [\App\Http\Controllers\Api\StudentQrController::class, 'regenerate'])->name('api.students.regenerate-qr');
 });
 
 require __DIR__.'/settings.php';

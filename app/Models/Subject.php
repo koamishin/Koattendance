@@ -11,7 +11,17 @@ class Subject extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'description'];
+    protected $fillable = ['name', 'description', 'teacher_id', 'icon'];
+
+    public function teacher()
+    {
+        return $this->belongsTo(Teacher::class);
+    }
+
+    public function seatPlans(): HasMany
+    {
+        return $this->hasMany(SeatPlan::class);
+    }
 
     public function grades(): HasMany
     {
