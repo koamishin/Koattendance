@@ -123,13 +123,7 @@ const tabs = [
                 <!-- Students Tab -->
                 <div v-if="activeTab === 'students'">
                     <div class="rounded-xl border bg-card p-6 shadow-sm">
-                        <h3 class="mb-4 text-lg font-semibold">
-                            Enrolled Students
-                        </h3>
-                        <!-- List students here -->
-                        <p class="text-muted-foreground">
-                            Student list management coming soon.
-                        </p>
+                        <StudentManager :subject-id="parseInt(subjectId)" />
                     </div>
                 </div>
             </div>

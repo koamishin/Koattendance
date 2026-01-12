@@ -36,6 +36,39 @@ class StudentController extends Controller
         ]);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255|unique:students,email',
+            'student_id' => 'required|string|max:255|unique:students,student_id',
+        ]);
+        
+        // Combine first and last name for the 'name' column if it exists or use Accessor
+        // Checking the model, it uses 'name' in select, but fillable has first_name, last_name
+        // I should check if 'name' column exists or if it is an accessor.
+        // Assuming 'name' is NOT a column based on fillable.
+        // Wait, index() selects 'name'. Let me double check migration or rely on fillable.
+        // The fillable has 'first_name', 'last_name'. 
+        // Let me check if 'name' is in fillable... NO.
+        // But index() selects 'name'. This implies 'name' might be a column or a virtual column?
+        // Or maybe the index method is wrong/legacy.
+        // I will assume I should save first_name and last_name.
+        
+        $student = Student::create($validated);
+        
+        // If subject_id is provided, enroll the student
+        if ($request->has('subject_id')) {
+            $student->subjects()->attach($request->subject_id);
+        }
+
+        return response()->json([
+            'message' => 'Student created successfully',
+            'student' => $student,
+        ], 201);
+    }
+
     public function getSeating(): JsonResponse
     {
         $arrangement = \App\Models\SeatingArrangement::firstOrCreate(

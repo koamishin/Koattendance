@@ -33,6 +33,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('dashboard/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('dashboard.grades');
     Route::patch('dashboard/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('grades.update');
+    Route::post('api/students', [\App\Http\Controllers\StudentController::class, 'store'])->name('api.students.store');
     Route::get('api/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('api.students');
     Route::get('api/seating', [\App\Http\Controllers\StudentController::class, 'getSeating'])->name('api.seating');
     Route::post('api/seating', [\App\Http\Controllers\StudentController::class, 'updateSeating'])->name('api.seating.update');
