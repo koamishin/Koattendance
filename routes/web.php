@@ -23,9 +23,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Dashboard/Attendance');
     })->name('dashboard.attendance');
 
-    Route::get('dashboard/grades', function () {
-        return Inertia::render('Dashboard/Grades');
-    })->name('dashboard.grades');
+    Route::get('dashboard/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('dashboard.grades');
+    Route::patch('dashboard/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('grades.update');
+    Route::get('api/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('api.students');
+    Route::get('api/seating', [\App\Http\Controllers\StudentController::class, 'getSeating'])->name('api.seating');
+    Route::post('api/seating', [\App\Http\Controllers\StudentController::class, 'updateSeating'])->name('api.seating.update');
+    Route::post('api/seating/grid', [\App\Http\Controllers\StudentController::class, 'updateGridDimensions'])->name('api.seating.grid');
+    Route::get('api/attendance', [\App\Http\Controllers\AttendanceController::class, 'index'])->name('api.attendance');
+    Route::get('api/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'getStats'])->name('api.dashboard.stats');
+    Route::get('api/dashboard/attendance-summary', [\App\Http\Controllers\DashboardController::class, 'getAttendanceSummary'])->name('api.dashboard.attendance-summary');
+    Route::get('api/dashboard/grade-summary', [\App\Http\Controllers\DashboardController::class, 'getGradeSummary'])->name('api.dashboard.grade-summary');
+    Route::get('api/dashboard/weekly-attendance', [\App\Http\Controllers\DashboardController::class, 'getWeeklyAttendance'])->name('api.dashboard.weekly-attendance');
+    Route::get('api/dashboard/subject-performance', [\App\Http\Controllers\DashboardController::class, 'getSubjectPerformance'])->name('api.dashboard.subject-performance');
+    Route::post('attendance/{id}/update-status', [\App\Http\Controllers\AttendanceController::class, 'updateStatus'])->name('attendance.updateStatus');
 });
 
 require __DIR__.'/settings.php';

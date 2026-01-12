@@ -4,44 +4,26 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AttendanceRecord extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'session_id',
-        'student_id',
-        'status',
-        'timestamp',
-        'recorded_by',
-        'scan_event_id',
-        'device_info',
-        'notes',
-    ];
+    protected $fillable = ['student_id', 'student_name', 'status', 'time', 'date', 'subject_id'];
 
     protected $casts = [
-        'timestamp' => 'datetime',
-        'device_info' => 'array',
+        'date' => 'date',
+        'time' => 'datetime:H:i',
     ];
 
-    public function session()
-    {
-        return $this->belongsTo(ClassSession::class);
-    }
-
-    public function student()
+    public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
     }
 
-    public function recordedBy()
+    public function subject(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'recorded_by');
-    }
-
-    public function scanEvent()
-    {
-        return $this->belongsTo(QrScanEvent::class);
+        return $this->belongsTo(Subject::class);
     }
 }
