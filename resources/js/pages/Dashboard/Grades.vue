@@ -130,7 +130,7 @@ const classStats = computed(() => {
     <Head title="Grades" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-6">
+        <div class="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-6">
             <div>
                 <h1 class="text-3xl font-bold mb-2">Grade Records</h1>
                 <div class="flex items-center gap-2 text-muted-foreground">
@@ -182,8 +182,8 @@ const classStats = computed(() => {
                     </p>
                 </div>
             </div>
-            <div v-else class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden overflow-x-auto">
-                <table class="w-full min-w-max">
+            <div v-else class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden">
+                <table class="w-full">
                     <thead
                         class="bg-muted/50 dark:bg-muted/20 border-b border-sidebar-border/70 dark:border-sidebar-border">
                         <tr>
