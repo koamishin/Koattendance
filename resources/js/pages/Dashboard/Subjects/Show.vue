@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import AttendanceManager from '@/components/AttendanceManager.vue';
+import SeatPlanManager from '@/components/SeatPlanManager.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { BookOpen, Calendar, LayoutDashboard, Users } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
-// We'll reuse components, but we might need to adjust them to accept props instead of reading URL query params exclusively if we want tabs.
-// Or we can just build a wrapper.
 
 const props = defineProps<{
     subjectId: string;
@@ -108,43 +108,15 @@ const tabs = [
 
                 <!-- Attendance Tab -->
                 <div v-if="activeTab === 'attendance'">
-                    <!-- We can reuse the Attendance component here or build a simplified one. 
-                         Since the Attendance Page is full-page, let's modify it or just iframe it conceptually (not real iframe).
-                         Actually, let's direct the user to the Attendance Page with pre-selected subject, 
-                         OR better: Render the critical parts of attendance here.
-                    -->
-                    <div class="rounded-xl border bg-card p-1 shadow-sm">
-                        <!-- TODO: Integrate Attendance Component properly. 
-                              For now, I'll link to it or create a wrapper. 
-                              Since I can't easily import a full page component that expects its own layout without layout nesting issues,
-                              I will replicate the core attendance view here or refactor Attendance.vue to be a component.
-                         -->
-                        <p class="p-4 text-center text-muted-foreground">
-                            Attendance Module Loading... (Refactor needed to
-                            embed)
-                        </p>
-                        <div class="flex justify-center p-6">
-                            <a
-                                :href="`/dashboard/attendance?subjectId=${subject.id}`"
-                                class="text-primary hover:underline"
-                            >
-                                Open Full Attendance View
-                            </a>
-                        </div>
+                    <div class="rounded-xl border bg-card p-6 shadow-sm">
+                        <AttendanceManager :subject-id="parseInt(subjectId)" />
                     </div>
                 </div>
 
                 <!-- Seatplan Tab -->
                 <div v-if="activeTab === 'seatplan'">
-                    <div
-                        class="flex min-h-[400px] items-center justify-center rounded-xl border bg-card shadow-sm"
-                    >
-                        <a
-                            :href="`/dashboard/seatplan?subjectId=${subject.id}`"
-                            class="text-primary hover:underline"
-                        >
-                            Open Seat Plan Manager
-                        </a>
+                    <div class="rounded-xl border bg-card p-6 shadow-sm">
+                        <SeatPlanManager :subject-id="parseInt(subjectId)" />
                     </div>
                 </div>
 
