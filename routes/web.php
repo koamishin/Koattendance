@@ -23,12 +23,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Dashboard/Attendance');
     })->name('dashboard.attendance');
 
-    Route::get('dashboard/grades', function () {
-        return Inertia::render('Dashboard/Grades');
-    })->name('dashboard.grades');
-
-    Route::get('api/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('api.grades');
-    Route::patch('api/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('api.grades.update');
+    Route::get('dashboard/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('dashboard.grades');
+    Route::patch('dashboard/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('grades.update');
     Route::get('api/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('api.students');
     Route::get('api/seating', [\App\Http\Controllers\StudentController::class, 'getSeating'])->name('api.seating');
     Route::post('api/seating', [\App\Http\Controllers\StudentController::class, 'updateSeating'])->name('api.seating.update');

@@ -294,160 +294,72 @@ onMounted(() => {
                 </div>
 
                 <!-- Grid Controls -->
-                <div class="flex items-center gap-4 rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
-                    <span class="text-sm font-medium">Grid Size:</span>
-                    <span class="text-sm text-muted-foreground">{{ gridRows }} × {{ gridColumns }}</span>
+                <div class="flex flex-col gap-4 rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border md:flex-row md:items-center">
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm font-medium">Grid Size:</span>
+                        <span class="text-sm text-muted-foreground">{{ gridRows }} × {{ gridColumns }}</span>
+                    </div>
                     
                     <!-- Row Controls -->
                     <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground md:hidden">Rows:</span>
                         <button @click="removeRow" :disabled="gridRows <= 2"
-                            class="flex items-center gap-1 rounded px-3 py-1 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="flex items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
                             <ChevronUp class="h-4 w-4" />
-                            Rows
+                            <span class="hidden md:inline">Rows</span>
                         </button>
-                        <button @click="addRow" class="flex items-center gap-1 rounded px-3 py-1 text-sm hover:bg-muted">
+                        <button @click="addRow" class="flex items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted">
                             <ChevronDown class="h-4 w-4" />
                         </button>
                     </div>
 
                     <!-- Column Controls -->
                     <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground md:hidden">Cols:</span>
                         <button @click="removeColumn" :disabled="gridColumns <= 2"
-                            class="flex items-center gap-1 rounded px-3 py-1 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="flex items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
                             <ChevronRight class="h-4 w-4 rotate-180" />
-                            Cols
+                            <span class="hidden md:inline">Cols</span>
                         </button>
-                        <button @click="addColumn" class="flex items-center gap-1 rounded px-3 py-1 text-sm hover:bg-muted">
+                        <button @click="addColumn" class="flex items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted">
                             <ChevronRight class="h-4 w-4" />
                         </button>
                     </div>
                 </div>
 
                 <!-- Legend -->
-                <div class="flex gap-6">
+                <div class="grid grid-cols-2 gap-3 md:flex md:gap-6">
                     <div class="flex items-center gap-2">
                         <div
                             class="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-green-500 bg-green-100 dark:bg-green-900">
                             <Check class="h-4 w-4 text-green-600" />
                         </div>
-                        <span class="text-sm font-medium">Present</span>
+                        <span class="text-xs md:text-sm font-medium">Present</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <div
                             class="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-yellow-500 bg-yellow-100 dark:bg-yellow-900">
                             <Clock class="h-4 w-4 text-yellow-600" />
                         </div>
-                        <span class="text-sm font-medium">Late</span>
+                        <span class="text-xs md:text-sm font-medium">Late</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <div
                             class="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-red-500 bg-red-100 dark:bg-red-900">
                             <X class="h-4 w-4 text-red-600" />
                         </div>
-                        <span class="text-sm font-medium">Absent</span>
+                        <span class="text-xs md:text-sm font-medium">Absent</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <div
                             class="h-6 w-6 rounded-lg border-2 border-gray-400 bg-gray-100 dark:border-gray-600 dark:bg-gray-800" />
-                        <span class="text-sm font-medium">Empty Seat</span>
+                        <span class="text-xs md:text-sm font-medium">Empty</span>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-4 gap-4">
-                    <!-- Seating Grid -->
-                    <div class="col-span-3">
-                        <div class="mb-4">
-                            <h2 class="text-lg font-semibold">Seating Arrangement</h2>
-                            <p class="text-sm text-muted-foreground">Drag students to arrange seats</p>
-                        </div>
-
-                        <div
-                            class="rounded-lg border border-sidebar-border/70 bg-muted/50 p-8 dark:border-sidebar-border dark:bg-muted/20">
-                            <!-- Whiteboard indicator -->
-                            <div class="mb-8" :style="{ gridColumn: `1 / span ${gridColumns}` }">
-                                <div
-                                    class="flex items-center justify-center rounded border-2 border-blue-400 bg-blue-100 py-3 font-bold text-blue-900 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                                    Whiteboard
-                                </div>
-                            </div>
-
-                            <!-- Seats Grid -->
-                            <div class="gap-4" :style="{ display: 'grid', gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }">
-                                <div v-for="(seat, index) in seatingArrangement" :key="seat.seatId"
-                                    @dragover="dragOver" @drop="dropOnSeat(index)"
-                                    class="relative h-32 cursor-grab rounded-lg border-2 p-3 transition-all hover:shadow-lg"
-                                    :class="[
-                                        seat.student
-                                            ? seat.student.status === 'present'
-                                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                                : seat.student.status === 'late'
-                                                    ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
-                                                    : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                                            : 'border-dashed border-gray-400 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/50',
-                                    ]">
-                                    <!-- Remove Button -->
-                                    <button v-if="seat.student" @click="removeSeatStudent(index)"
-                                        class="absolute right-1 top-1 rounded p-1 hover:bg-red-200 dark:hover:bg-red-900"
-                                        title="Remove student">
-                                        <Trash2 class="h-3 w-3 text-red-600" />
-                                    </button>
-
-                                    <!-- Student or Empty -->
-                                    <div v-if="seat.student" class="flex h-full flex-col items-center justify-center"
-                                        draggable="true" @dragstart="dragStartFromSeat(index, $event)">
-                                        <div :class="[
-                                            'mb-2 flex h-8 w-8 items-center justify-center rounded-lg border-2',
-                                            seat.student.status === 'present'
-                                                ? 'border-green-500 bg-green-100 dark:bg-green-800'
-                                                : seat.student.status === 'late'
-                                                    ? 'border-yellow-500 bg-yellow-100 dark:bg-yellow-800'
-                                                    : 'border-red-500 bg-red-100 dark:bg-red-800',
-                                        ]">
-                                            <Check v-if="seat.student.status === 'present'"
-                                                class="h-5 w-5 text-green-600" />
-                                            <Clock v-else-if="seat.student.status === 'late'"
-                                                class="h-5 w-5 text-yellow-600" />
-                                            <X v-else class="h-5 w-5 text-red-600" />
-                                        </div>
-                                        <p class="line-clamp-2 text-center text-xs font-semibold">
-                                            {{ seat.student.name }}
-                                        </p>
-                                        <p class="text-xs text-muted-foreground">Seat {{ seat.seatId }}</p>
-                                    </div>
-                                    <div v-else class="flex h-full items-center justify-center">
-                                        <span class="text-xs text-gray-400">Seat {{ seat.seatId }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Summary -->
-                        <div class="mt-6 grid grid-cols-4 gap-4">
-                            <div
-                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
-                                <p class="mb-2 text-sm text-muted-foreground">Present</p>
-                                <p class="text-2xl font-bold text-green-600">{{ presentCount }}</p>
-                            </div>
-                            <div
-                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
-                                <p class="mb-2 text-sm text-muted-foreground">Late</p>
-                                <p class="text-2xl font-bold text-yellow-600">{{ lateCount }}</p>
-                            </div>
-                            <div
-                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
-                                <p class="mb-2 text-sm text-muted-foreground">Absent</p>
-                                <p class="text-2xl font-bold text-red-600">{{ absentCount }}</p>
-                            </div>
-                            <div
-                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
-                                <p class="mb-2 text-sm text-muted-foreground">Seated</p>
-                                <p class="text-2xl font-bold">{{ seatedCount }}/{{ seatingArrangement.length }}</p>
-                            </div>
-                        </div>
-                    </div>
-
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
                     <!-- Available Students Panel -->
-                    <div class="rounded-lg border border-sidebar-border/70 bg-card p-2 dark:border-sidebar-border">
+                    <div class="col-span-1 lg:col-span-1 rounded-lg border border-sidebar-border/70 bg-card p-2 dark:border-sidebar-border">
                         <h2 class="mb-2 text-sm font-semibold">Available ({{ availableStudents.length }})</h2>
 
                         <div class="space-y-1 overflow-y-auto max-h-full">
@@ -484,6 +396,98 @@ onMounted(() => {
                                     title="Add to first empty seat">
                                     <Plus class="h-3 w-3 text-primary" />
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Seating Grid -->
+                    <div class="col-span-1 lg:col-span-3">
+                        <div class="mb-4">
+                            <h2 class="text-lg font-semibold">Seating Arrangement</h2>
+                            <p class="text-sm text-muted-foreground">Drag students to arrange seats</p>
+                        </div>
+
+                        <div
+                            class="rounded-lg border border-sidebar-border/70 bg-muted/50 p-8 dark:border-sidebar-border dark:bg-muted/20">
+                            <!-- Whiteboard indicator -->
+                            <div class="mb-8" :style="{ gridColumn: `1 / span ${gridColumns}` }">
+                                <div
+                                    class="flex items-center justify-center rounded border-2 border-blue-400 bg-blue-100 py-3 font-bold text-blue-900 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                                    Whiteboard
+                                </div>
+                            </div>
+
+                            <!-- Seats Grid -->
+                            <div class="gap-2 md:gap-4 overflow-x-auto" :style="{ display: 'grid', gridTemplateColumns: `repeat(${gridColumns}, minmax(100px, 1fr))`, gridAutoRows: 'auto' }">
+                                <div v-for="(seat, index) in seatingArrangement" :key="seat.seatId"
+                                    @dragover="dragOver" @drop="dropOnSeat(index)"
+                                    class="relative h-24 md:h-32 cursor-grab rounded-lg border-2 p-2 md:p-3 transition-all hover:shadow-lg"
+                                    :class="[
+                                        seat.student
+                                            ? seat.student.status === 'present'
+                                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                                : seat.student.status === 'late'
+                                                    ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
+                                                    : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                                            : 'border-dashed border-gray-400 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/50',
+                                    ]">
+                                    <!-- Remove Button -->
+                                    <button v-if="seat.student" @click="removeSeatStudent(index)"
+                                        class="absolute right-1 top-1 rounded p-1 hover:bg-red-200 dark:hover:bg-red-900"
+                                        title="Remove student">
+                                        <Trash2 class="h-3 w-3 text-red-600" />
+                                    </button>
+
+                                    <!-- Student or Empty -->
+                                    <div v-if="seat.student" class="flex h-full flex-col items-center justify-center"
+                                        draggable="true" @dragstart="dragStartFromSeat(index, $event)">
+                                        <div :class="[
+                                            'mb-2 flex h-8 w-8 items-center justify-center rounded-lg border-2',
+                                            seat.student.status === 'present'
+                                                ? 'border-green-500 bg-green-100 dark:bg-green-800'
+                                                : seat.student.status === 'late'
+                                                    ? 'border-yellow-500 bg-yellow-100 dark:bg-yellow-800'
+                                                    : 'border-red-500 bg-red-100 dark:bg-red-800',
+                                        ]">
+                                            <Check v-if="seat.student.status === 'present'"
+                                                class="h-5 w-5 text-green-600" />
+                                            <Clock v-else-if="seat.student.status === 'late'"
+                                                class="h-5 w-5 text-yellow-600" />
+                                            <X v-else class="h-5 w-5 text-red-600" />
+                                        </div>
+                                        <p class="line-clamp-1 md:line-clamp-2 text-center text-xs font-semibold">
+                                            {{ seat.student.name }}
+                                        </p>
+                                        <p class="text-xs text-muted-foreground">Seat {{ seat.seatId }}</p>
+                                    </div>
+                                    <div v-else class="flex h-full items-center justify-center">
+                                        <span class="text-xs text-gray-400">Seat {{ seat.seatId }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <div class="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+                            <div
+                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
+                                <p class="mb-2 text-sm text-muted-foreground">Present</p>
+                                <p class="text-2xl font-bold text-green-600">{{ presentCount }}</p>
+                            </div>
+                            <div
+                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
+                                <p class="mb-2 text-sm text-muted-foreground">Late</p>
+                                <p class="text-2xl font-bold text-yellow-600">{{ lateCount }}</p>
+                            </div>
+                            <div
+                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
+                                <p class="mb-2 text-sm text-muted-foreground">Absent</p>
+                                <p class="text-2xl font-bold text-red-600">{{ absentCount }}</p>
+                            </div>
+                            <div
+                                class="rounded-lg border border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border">
+                                <p class="mb-2 text-sm text-muted-foreground">Seated</p>
+                                <p class="text-2xl font-bold">{{ seatedCount }}/{{ seatingArrangement.length }}</p>
                             </div>
                         </div>
                     </div>

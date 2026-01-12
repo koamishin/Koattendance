@@ -200,7 +200,7 @@ const getStatusBadge = (status: string) => {
     <Head title="Attendance" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-6">
+        <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-6">
             <div>
                 <h1 class="text-3xl font-bold mb-4">Attendance Records</h1>
                 
@@ -335,11 +335,11 @@ const getStatusBadge = (status: string) => {
                 </div>
             </div>
             <div v-else-if="selectedSubjectId" class="flex flex-col gap-6">
-                <div v-for="(records, day) in groupedRecords" :key="day" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden">
+                <div v-for="(records, day) in groupedRecords" :key="day" class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden overflow-x-auto">
                     <div class="bg-muted/50 dark:bg-muted/20 px-6 py-4 border-b border-sidebar-border/70 dark:border-sidebar-border">
                         <h2 class="text-lg font-semibold">{{ day }}</h2>
                     </div>
-                    <table class="w-full">
+                    <table class="w-full min-w-max">
                         <thead class="bg-muted/30 dark:bg-muted/10 border-b border-sidebar-border/70 dark:border-sidebar-border">
                             <tr>
                                 <th class="text-left px-6 py-3 font-semibold text-sm">

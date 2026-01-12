@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
-import { Head } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { TrendingUp, BookOpen } from 'lucide-vue-next';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
+
+interface Props {
+    gradeRecords: any[];
+    subjects: string[];
+}
+
+const props = defineProps<Props>();
+const page = usePage();
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -16,21 +24,14 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const gradeRecords = ref<any[]>([]);
-const subjects = ref<string[]>([]);
+const gradeRecords = ref<any[]>(props.gradeRecords);
+const subjects = ref<string[]>(props.subjects);
 const editingCell = ref<string | null>(null);
 const editValue = ref<string>('');
 const savingCell = ref<string | null>(null);
 
-onMounted(async () => {
-    try {
-        const response = await fetch('/api/grades');
-        const data = await response.json();
-        gradeRecords.value = data.gradeRecords;
-        subjects.value = data.subjects;
-    } catch (error) {
-        console.error('Error fetching grades:', error);
-    }
+watch(() => props.gradeRecords, (newRecords) => {
+    gradeRecords.value = newRecords;
 });
 
 const getGradeColor = (grade: number | null) => {
@@ -62,30 +63,25 @@ const saveGrade = async (rowIndex: number, subject: string) => {
     }
 
     savingCell.value = `${rowIndex}-${subject}`;
-    try {
-        const response = await fetch(`/api/grades/${gradeId}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-            },
-            body: JSON.stringify({ grade: gradeNum }),
-        });
 
-        if (response.ok) {
-            gradeRecords.value[rowIndex][subject] = gradeNum;
-            recalculateAverage(rowIndex);
-            editingCell.value = null;
-            editValue.value = '';
-        } else {
-            alert('Failed to update grade');
+    router.patch(
+        `/dashboard/grades/${gradeId}`,
+        { grade: gradeNum },
+        {
+            onSuccess: () => {
+                gradeRecords.value[rowIndex][subject] = gradeNum;
+                recalculateAverage(rowIndex);
+                editingCell.value = null;
+                editValue.value = '';
+            },
+            onError: () => {
+                alert('Failed to update grade');
+            },
+            onFinish: () => {
+                savingCell.value = null;
+            },
         }
-    } catch (error) {
-        console.error('Error saving grade:', error);
-        alert('Error saving grade');
-    } finally {
-        savingCell.value = null;
-    }
+    );
 };
 
 const recalculateAverage = (rowIndex: number) => {
@@ -134,7 +130,7 @@ const classStats = computed(() => {
     <Head title="Grades" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-6">
+        <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-6">
             <div>
                 <h1 class="text-3xl font-bold mb-2">Grade Records</h1>
                 <div class="flex items-center gap-2 text-muted-foreground">
@@ -186,8 +182,8 @@ const classStats = computed(() => {
                     </p>
                 </div>
             </div>
-            <div v-else class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden">
-                <table class="w-full">
+            <div v-else class="rounded-lg border border-sidebar-border/70 dark:border-sidebar-border overflow-hidden overflow-x-auto">
+                <table class="w-full min-w-max">
                     <thead
                         class="bg-muted/50 dark:bg-muted/20 border-b border-sidebar-border/70 dark:border-sidebar-border">
                         <tr>

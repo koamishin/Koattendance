@@ -378,9 +378,9 @@ const getGradeDistributionList = () => {
                     No subject data available
                 </div>
 
-                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
                     <div v-for="subject in subjectPerformance" :key="subject.subject" class="text-center">
-                        <div class="relative w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center"
+                        <div class="relative w-16 md:w-20 lg:w-24 h-16 md:h-20 lg:h-24 rounded-full mx-auto mb-3 md:mb-4 flex items-center justify-center"
                             :style="{
                                 background: `conic-gradient(
                                     from 0deg,
@@ -391,13 +391,13 @@ const getGradeDistributionList = () => {
                                     }deg
                                 )`,
                             }">
-                            <div class="w-20 h-20 rounded-full bg-card flex items-center justify-center">
-                                <span class="text-sm font-bold">
+                            <div class="absolute w-14 md:w-16 lg:w-20 h-14 md:h-16 lg:h-20 rounded-full bg-card flex items-center justify-center">
+                                <span class="text-xs md:text-sm font-bold">
                                     {{ subject.avgGrade }}
                                 </span>
                             </div>
                         </div>
-                        <h4 class="font-semibold text-sm mb-2">
+                        <h4 class="font-semibold text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">
                             {{ subject.subject }}
                         </h4>
                         <p class="text-xs text-muted-foreground">

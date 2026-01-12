@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Grade;
 use App\Models\Subject;
-use Illuminate\Http\JsonResponse;
+use Inertia\Inertia;
+use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 
 class GradeController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(): Response
     {
         $subjects = Subject::with('grades')->get();
 
@@ -39,13 +41,13 @@ class GradeController extends Controller
             $gradeRecords[] = $record;
         }
 
-        return response()->json([
+        return Inertia::render('Dashboard/Grades', [
             'gradeRecords' => $gradeRecords,
-            'subjects' => $subjects->pluck('name')->map(fn ($name) => $this->slugify($name)),
+            'subjects' => $subjects->pluck('name')->map(fn ($name) => $this->slugify($name))->toArray(),
         ]);
     }
 
-    public function update(Grade $grade): JsonResponse
+    public function update(Grade $grade): RedirectResponse
     {
         $validated = request()->validate([
             'grade' => 'required|numeric|min:0|max:100',
@@ -53,10 +55,7 @@ class GradeController extends Controller
 
         $grade->update(['grade' => $validated['grade']]);
 
-        return response()->json([
-            'message' => 'Grade updated successfully',
-            'grade' => $grade,
-        ]);
+        return redirect()->back()->with('success', 'Grade updated successfully');
     }
 
     private function slugify(string $text): string

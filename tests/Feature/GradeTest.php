@@ -22,17 +22,12 @@ test('can fetch grades', function () {
         'grade' => 90,
     ]);
 
-    $response = $this->actingAs($user)->getJson('/api/grades');
+    $response = $this->actingAs($user)->get('/dashboard/grades');
 
     $response->assertSuccessful();
-    $response->assertJsonStructure([
-        'gradeRecords' => [
-            '*' => [
-                'name',
-                'average',
-            ],
-        ],
-        'subjects' => [],
+    $response->assertInertiaHasKeys([
+        'gradeRecords',
+        'subjects',
     ]);
 });
 
@@ -46,12 +41,12 @@ test('can update grade', function () {
         'grade' => 75,
     ]);
 
-    $response = $this->actingAs($user)->patchJson("/api/grades/{$grade->id}", [
+    $response = $this->actingAs($user)->patch("/dashboard/grades/{$grade->id}", [
         'grade' => 92,
     ]);
 
-    $response->assertSuccessful();
-    $response->assertJsonFragment(['message' => 'Grade updated successfully']);
+    $response->assertRedirectToRoute('dashboard.grades');
+    $response->assertSessionHas('success', 'Grade updated successfully');
 
     $this->assertDatabaseHas('grades', [
         'id' => $grade->id,
@@ -70,18 +65,18 @@ test('grade update requires valid range', function () {
     ]);
 
     // Test invalid grade below range
-    $response = $this->actingAs($user)->patchJson("/api/grades/{$grade->id}", [
+    $response = $this->actingAs($user)->patch("/dashboard/grades/{$grade->id}", [
         'grade' => -5,
     ]);
 
-    $response->assertUnprocessable();
+    $response->assertInvalid();
 
     // Test invalid grade above range
-    $response = $this->actingAs($user)->patchJson("/api/grades/{$grade->id}", [
+    $response = $this->actingAs($user)->patch("/dashboard/grades/{$grade->id}", [
         'grade' => 150,
     ]);
 
-    $response->assertUnprocessable();
+    $response->assertInvalid();
 
     // Original grade should remain unchanged
     $this->assertDatabaseHas('grades', [
@@ -100,9 +95,9 @@ test('grade update requires grade field', function () {
         'grade' => 75,
     ]);
 
-    $response = $this->actingAs($user)->patchJson("/api/grades/{$grade->id}", []);
+    $response = $this->actingAs($user)->patch("/dashboard/grades/{$grade->id}", []);
 
-    $response->assertUnprocessable();
+    $response->assertInvalid();
 });
 
 test('grades page accessible to authenticated users', function () {
