@@ -20,12 +20,14 @@ class ClassSession extends Model
         'status',
         'attendance_mode',
         'notes',
+        'late_threshold_minutes',
     ];
 
     protected $casts = [
         'scheduled_date' => 'date',
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'late_threshold_minutes' => 'integer',
     ];
 
     public function course()

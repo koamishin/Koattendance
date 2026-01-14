@@ -30,17 +30,17 @@ class AttendanceController extends Controller
             }
 
             // Use the provided date or get the latest date
-            $date = request('date') ? \Carbon\Carbon::parse(request('date')) : (AttendanceRecord::orderBy('date', 'desc')->first()?->date ?? now());
+            $date = request('date') ? \Carbon\Carbon::parse(request('date')) : (AttendanceRecord::orderBy('timestamp', 'desc')->first()?->timestamp ?? now());
             
             $subjectId = request('subjectId') ? (int) request('subjectId') : null;
 
             AttendanceRecord::create([
                 'student_id' => $student->id,
-                'student_name' => $studentName, // We should deprecate this
+                // 'student_name' => $studentName, // Removed as column doesn't exist in schema
                 'status' => request('status'),
-                'date' => $date,
-                'time' => now(),
+                'timestamp' => $date->setTimeFrom(now()),
                 'subject_id' => $subjectId,
+                'recorded_by' => \Illuminate\Support\Facades\Auth::id(),
             ]);
 
             return back()->with('success', 'Attendance marked successfully');
@@ -85,7 +85,7 @@ class AttendanceController extends Controller
         // 2. Get Attendance Records for the selected date and subject
         $recordsQuery = AttendanceRecord::query()
             ->with('student')
-            ->whereDate('date', $selectedDate);
+            ->whereDate('timestamp', $selectedDate);
 
         if ($selectedSubjectId) {
             $recordsQuery->where('subject_id', $selectedSubjectId);
@@ -103,9 +103,9 @@ class AttendanceController extends Controller
                     'student_id' => $student->id,
                     'name' => $student->first_name . ' ' . $student->last_name, // Using new fields
                     'status' => $record->status,
-                    'date' => $record->date->format('M d, Y'),
-                    'dayOfWeek' => $record->date->format('l'),
-                    'time' => $record->status === 'absent' ? '-' : ($record->time ? date('h:i A', strtotime($record->time)) : '-'),
+                    'date' => $record->timestamp->format('M d, Y'),
+                    'dayOfWeek' => $record->timestamp->format('l'),
+                    'time' => $record->status === 'absent' ? '-' : ($record->timestamp ? $record->timestamp->format('h:i A') : '-'),
                 ];
             }
 
@@ -138,8 +138,8 @@ class AttendanceController extends Controller
         }
         // Also add dates that have records
         $existingDates = AttendanceRecord::where('subject_id', $selectedSubjectId)
-            ->pluck('date')
-            ->map(fn($d) => $d->format('Y-m-d'))
+            ->pluck('timestamp')
+            ->map(fn($d) => $d instanceof \Carbon\Carbon ? $d->format('Y-m-d') : \Carbon\Carbon::parse($d)->format('Y-m-d'))
             ->toArray();
         
         $availableDates = array_unique(array_merge($existingDates, $availableDates));

@@ -89,6 +89,7 @@ const getIconComponent = (iconName: string) => {
         CheckCircle2,
         TrendingUp,
         AlertCircle,
+        Clock,
     };
     return icons[iconName] || Users;
 };
@@ -139,6 +140,12 @@ const getGradeDistributionList = () => {
                                 {{ stat.title }}
                             </p>
                             <p class="text-3xl font-bold">{{ stat.value }}</p>
+                            <p
+                                v-if="stat.subtitle"
+                                class="mt-1 text-xs text-muted-foreground"
+                            >
+                                {{ stat.subtitle }}
+                            </p>
                         </div>
                         <div :class="[stat.bgColor, 'rounded-lg p-3']">
                             <component

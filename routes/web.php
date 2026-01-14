@@ -27,9 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Dashboard/Subjects/Index');
     })->name('dashboard.subjects');
 
-    Route::get('dashboard/subjects/{id}', function ($id) {
-        return Inertia::render('Dashboard/Subjects/Show', ['subjectId' => $id]);
-    })->name('dashboard.subjects.show');
+    Route::get('dashboard/subjects/{id}', [\App\Http\Controllers\SubjectController::class, 'show'])->name('dashboard.subjects.show');
 
     Route::get('dashboard/grades', [\App\Http\Controllers\GradeController::class, 'index'])->name('dashboard.grades');
     Route::patch('dashboard/grades/{grade}', [\App\Http\Controllers\GradeController::class, 'update'])->name('grades.update');
@@ -55,9 +53,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // QR Code Attendance Routes
     Route::get('api/attendance/sessions/today', [\App\Http\Controllers\Api\ClassSessionController::class, 'today'])->name('api.sessions.today');
+    Route::post('api/attendance/sessions/start', [\App\Http\Controllers\Api\ClassSessionController::class, 'startForSubject'])->name('api.sessions.start');
+    Route::post('api/attendance/sessions/{session}/end', [\App\Http\Controllers\Api\ClassSessionController::class, 'endSession'])->name('api.sessions.end');
+    Route::get('api/attendance/sessions/{session}/status', [\App\Http\Controllers\Api\ClassSessionController::class, 'status'])->name('api.sessions.status');
     Route::post('api/attendance/scan', [\App\Http\Controllers\Api\AttendanceScanController::class, 'scan'])->name('api.attendance.scan');
     Route::get('api/students/{student}/qr-code', [\App\Http\Controllers\Api\StudentQrController::class, 'show'])->name('api.students.qr-code');
     Route::post('api/students/{student}/regenerate-qr', [\App\Http\Controllers\Api\StudentQrController::class, 'regenerate'])->name('api.students.regenerate-qr');
+    Route::get('api/subjects/{subject}/students/qr-codes', [\App\Http\Controllers\Api\SubjectController::class, 'studentsWithQrCodes'])->name('api.subjects.students-qr-codes');
 });
 
 require __DIR__.'/settings.php';

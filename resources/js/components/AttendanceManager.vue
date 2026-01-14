@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -17,7 +19,10 @@ import {
     Check,
     ChevronLeft,
     ChevronRight,
+    Loader2,
+    Play,
     QrCode,
+    Square,
     X,
 } from 'lucide-vue-next';
 import { onMounted, ref, watch } from 'vue';
@@ -44,8 +49,15 @@ const editingId = ref<number | null>(null);
 const editingStatus = ref<string>('');
 const isScanningOpen = ref(false);
 const currentSessionId = ref<number | null>(null);
+const currentSession = ref<any>(null);
 const scanStatus = ref<string | null>(null);
 const scanMessage = ref<string | null>(null);
+const isStartingSession = ref(false);
+const isEndingSession = ref(false);
+const showEndSessionConfirm = ref(false);
+const showStartSessionDialog = ref(false);
+const lateThresholdMinutes = ref(15);
+const sessionStats = ref<any>(null);
 
 onMounted(async () => {
     // Load attendance with saved values or today
@@ -54,7 +66,7 @@ onMounted(async () => {
 
     // If teacher, try to fetch today's session
     if (roles?.isTeacher) {
-        fetchTodaySession();
+        await fetchTodaySession();
     }
 });
 
@@ -62,30 +74,111 @@ watch(
     () => props.subjectId,
     () => {
         loadAttendance(selectedDateValue.value || undefined);
+        if (roles?.isTeacher) {
+            fetchTodaySession();
+        }
     },
 );
 
 const fetchTodaySession = async () => {
     try {
-        const response = await axios.get(route('api.sessions.today'));
+        const response = await axios.get('/api/attendance/sessions/today');
         if (response.data.sessions && response.data.sessions.length > 0) {
-            // Filter session for this subject if possible, or just pick first active
-            // Ideally backend filters by teacher and date. We might need to filter by subject here if the API returns all.
-            const session =
-                response.data.sessions.find(
-                    (s: any) => s.course_id == props.subjectId,
-                ) || response.data.sessions[0];
-            currentSessionId.value = session.id;
+            // Find session for this subject
+            const session = response.data.sessions.find(
+                (s: any) =>
+                    s.course_id == props.subjectId &&
+                    s.status === 'in_progress',
+            );
+            if (session) {
+                currentSessionId.value = session.id;
+                currentSession.value = session;
+                await fetchSessionStats();
+            }
         }
     } catch (e) {
         console.error('Failed to fetch sessions', e);
     }
 };
 
+const fetchSessionStats = async () => {
+    if (!currentSessionId.value) return;
+    try {
+        const response = await axios.get(
+            `/api/attendance/sessions/${currentSessionId.value}/status`,
+        );
+        sessionStats.value = response.data;
+    } catch (e) {
+        console.error('Failed to fetch session stats', e);
+    }
+};
+
+const startSession = async () => {
+    isStartingSession.value = true;
+    try {
+        const response = await axios.post('/api/attendance/sessions/start', {
+            subject_id: props.subjectId,
+            late_threshold_minutes: lateThresholdMinutes.value,
+        });
+        currentSessionId.value = response.data.session.id;
+        currentSession.value = response.data.session;
+        await fetchSessionStats();
+        showStartSessionDialog.value = false;
+        scanMessage.value = response.data.is_new
+            ? `Session started! Students scanning after ${lateThresholdMinutes.value} minutes will be marked late.`
+            : 'Resumed existing session.';
+        scanStatus.value = 'success';
+        setTimeout(() => {
+            scanMessage.value = null;
+            scanStatus.value = null;
+        }, 5000);
+    } catch (e: any) {
+        console.error('Failed to start session', e);
+        scanMessage.value =
+            e.response?.data?.message || 'Failed to start session';
+        scanStatus.value = 'error';
+    } finally {
+        isStartingSession.value = false;
+    }
+};
+
+const endSession = async () => {
+    if (!currentSessionId.value) return;
+
+    isEndingSession.value = true;
+    try {
+        const response = await axios.post(
+            `/api/attendance/sessions/${currentSessionId.value}/end`,
+        );
+
+        scanMessage.value = `Session ended. ${response.data.marked_absent} student(s) marked absent.`;
+        scanStatus.value = 'success';
+
+        currentSessionId.value = null;
+        currentSession.value = null;
+        sessionStats.value = null;
+        showEndSessionConfirm.value = false;
+
+        // Reload attendance to show updated records
+        loadAttendance(selectedDateValue.value || undefined);
+
+        setTimeout(() => {
+            scanMessage.value = null;
+            scanStatus.value = null;
+        }, 5000);
+    } catch (e: any) {
+        console.error('Failed to end session', e);
+        scanMessage.value =
+            e.response?.data?.message || 'Failed to end session';
+        scanStatus.value = 'error';
+    } finally {
+        isEndingSession.value = false;
+    }
+};
+
 const handleScan = async (decodedText: string) => {
     if (!currentSessionId.value) {
-        scanMessage.value =
-            'No active session. Please select a subject first (Mock logic).';
+        scanMessage.value = 'No active session. Please start a session first.';
         scanStatus.value = 'error';
         return;
     }
@@ -94,17 +187,20 @@ const handleScan = async (decodedText: string) => {
     scanMessage.value = 'Verifying...';
 
     try {
-        const response = await axios.post(route('api.attendance.scan'), {
+        const response = await axios.post('/api/attendance/scan', {
             qr_code: decodedText,
             session_id: currentSessionId.value,
             device_info: { user_agent: navigator.userAgent },
         });
 
         scanStatus.value = 'success';
-        scanMessage.value = `Marked present: ${response.data.student.name}`;
+        const statusLabel =
+            response.data.status === 'late' ? 'late' : 'present';
+        scanMessage.value = `Marked ${statusLabel}: ${response.data.student.name}`;
 
-        // Refresh attendance list
+        // Refresh attendance list and stats
         loadAttendance(selectedDateValue.value || undefined);
+        fetchSessionStats();
 
         // Clear message after delay
         setTimeout(() => {
@@ -137,10 +233,7 @@ const loadAttendance = async (date?: string) => {
         selectedDate.value = data.selectedDate;
         availableDates.value = data.availableDates;
 
-        // Extract date value from formatted string (e.g., "January 10, 2026" -> "2026-01-10")
         if (data.selectedDate) {
-            // This relies on the backend sending formatted date, ideally backend sends ISO date too
-            // For now, let's trust the 'date' param we sent or default to today if it matches
             if (date) selectedDateValue.value = date;
             else {
                 const dateObj = new Date();
@@ -185,7 +278,6 @@ const startEditing = (record: any, index: number) => {
 const updateStatus = (record: any, index: number, newStatus: string) => {
     const payload: any = { status: newStatus };
 
-    // For unmarked students (id is null), pass the student name, date, and subject
     if (!record.id) {
         payload.studentName = record.name;
         payload.date = selectedDateValue.value;
@@ -244,6 +336,45 @@ const getStatusBadge = (status: string) => {
 
 <template>
     <div class="flex flex-col gap-6">
+        <!-- Session Status Banner -->
+        <div
+            v-if="roles?.isTeacher && currentSession"
+            class="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20"
+        >
+            <div class="flex items-center gap-3">
+                <div
+                    class="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-800"
+                >
+                    <Play class="h-5 w-5 text-green-600 dark:text-green-300" />
+                </div>
+                <div>
+                    <p class="font-medium text-green-800 dark:text-green-200">
+                        Session Active
+                    </p>
+                    <p class="text-sm text-green-600 dark:text-green-400">
+                        Present: {{ sessionStats?.present_count || 0 }} | Late:
+                        {{ sessionStats?.late_count || 0 }} | Unmarked:
+                        {{ sessionStats?.unmarked_count || 0 }}
+                        <span class="ml-2 inline-flex items-center gap-1">
+                            <Clock class="h-3 w-3" />
+                            Late after
+                            {{
+                                currentSession?.late_threshold_minutes || 15
+                            }}min
+                        </span>
+                    </p>
+                </div>
+            </div>
+            <Button
+                variant="destructive"
+                size="sm"
+                @click="showEndSessionConfirm = true"
+            >
+                <Square class="mr-2 h-4 w-4" />
+                End Session
+            </Button>
+        </div>
+
         <div class="flex items-center justify-between">
             <div>
                 <h2 class="text-xl font-semibold">Attendance Records</h2>
@@ -253,49 +384,112 @@ const getStatusBadge = (status: string) => {
             </div>
 
             <div class="flex items-center gap-2">
-                <!-- Scan Button for Teachers -->
-                <Dialog v-if="roles?.isTeacher" v-model:open="isScanningOpen">
-                    <DialogTrigger as-child>
-                        <Button class="gap-2">
-                            <QrCode class="h-4 w-4" />
-                            Scan Attendance
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent class="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Scan Student QR Code</DialogTitle>
-                        </DialogHeader>
-
-                        <div class="flex flex-col items-center gap-4 py-4">
-                            <div
-                                v-if="!currentSessionId"
-                                class="mb-2 w-full rounded-md bg-yellow-50 p-3 text-center text-sm text-yellow-600"
-                            >
-                                <AlertCircle class="mr-1 inline h-4 w-4" />
-                                No active class session found for today.
+                <!-- Session Controls for Teachers -->
+                <div v-if="roles?.isTeacher" class="flex gap-2">
+                    <!-- Start Session Dialog (when no active session) -->
+                    <Dialog
+                        v-if="!currentSessionId"
+                        v-model:open="showStartSessionDialog"
+                    >
+                        <DialogTrigger as-child>
+                            <Button class="gap-2">
+                                <Play class="h-4 w-4" />
+                                Start Session
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent class="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle
+                                    >Start Attendance Session</DialogTitle
+                                >
+                                <DialogDescription>
+                                    Configure the session settings before
+                                    starting.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div class="grid gap-4 py-4">
+                                <div class="grid gap-2">
+                                    <Label for="lateThreshold">
+                                        Late Threshold (minutes)
+                                    </Label>
+                                    <Input
+                                        id="lateThreshold"
+                                        v-model.number="lateThresholdMinutes"
+                                        type="number"
+                                        min="1"
+                                        max="120"
+                                        placeholder="15"
+                                    />
+                                    <p class="text-xs text-muted-foreground">
+                                        Students scanning after this many
+                                        minutes will be marked as "late" instead
+                                        of "present".
+                                    </p>
+                                </div>
                             </div>
+                            <DialogFooter>
+                                <Button
+                                    variant="outline"
+                                    @click="showStartSessionDialog = false"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    @click="startSession"
+                                    :disabled="isStartingSession"
+                                    class="gap-2"
+                                >
+                                    <Loader2
+                                        v-if="isStartingSession"
+                                        class="h-4 w-4 animate-spin"
+                                    />
+                                    <Play v-else class="h-4 w-4" />
+                                    Start Session
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
-                            <QrScanner
-                                v-if="currentSessionId || true"
-                                @scan="handleScan"
-                            />
+                    <!-- Scan Button (when session is active) -->
+                    <Dialog
+                        v-if="currentSessionId"
+                        v-model:open="isScanningOpen"
+                    >
+                        <DialogTrigger as-child>
+                            <Button class="gap-2">
+                                <QrCode class="h-4 w-4" />
+                                Scan QR
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent class="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Scan Student QR Code</DialogTitle>
+                                <DialogDescription>
+                                    Point your camera at a student's QR code to
+                                    mark their attendance.
+                                </DialogDescription>
+                            </DialogHeader>
 
-                            <div
-                                v-if="scanMessage"
-                                :class="[
-                                    'w-full rounded-md p-3 text-center text-sm font-medium transition-all',
-                                    scanStatus === 'success'
-                                        ? 'bg-green-100 text-green-700'
-                                        : scanStatus === 'error'
-                                          ? 'bg-red-100 text-red-700'
-                                          : 'bg-blue-100 text-blue-700',
-                                ]"
-                            >
-                                {{ scanMessage }}
+                            <div class="flex flex-col items-center gap-4 py-4">
+                                <QrScanner @scan="handleScan" />
+
+                                <div
+                                    v-if="scanMessage"
+                                    :class="[
+                                        'w-full rounded-md p-3 text-center text-sm font-medium transition-all',
+                                        scanStatus === 'success'
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                            : scanStatus === 'error'
+                                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                                    ]"
+                                >
+                                    {{ scanMessage }}
+                                </div>
                             </div>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                </div>
 
                 <!-- Add Student Button -->
                 <AddStudentModal
@@ -306,6 +500,22 @@ const getStatusBadge = (status: string) => {
                     "
                 />
             </div>
+        </div>
+
+        <!-- Status Message -->
+        <div
+            v-if="scanMessage && !isScanningOpen"
+            :class="[
+                'flex items-center gap-2 rounded-md p-3 text-sm',
+                scanStatus === 'success'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : scanStatus === 'error'
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+            ]"
+        >
+            <AlertCircle class="h-4 w-4" />
+            {{ scanMessage }}
         </div>
 
         <!-- Date Selection -->
@@ -470,5 +680,53 @@ const getStatusBadge = (status: string) => {
                 </tbody>
             </table>
         </div>
+
+        <!-- End Session Confirmation Dialog -->
+        <Dialog v-model:open="showEndSessionConfirm">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>End Session?</DialogTitle>
+                    <DialogDescription>
+                        This will end the current attendance session. All
+                        students who haven't been marked will automatically be
+                        marked as <strong>absent</strong>.
+                    </DialogDescription>
+                </DialogHeader>
+                <div class="py-4">
+                    <div class="rounded-lg bg-muted p-4 text-sm">
+                        <p><strong>Session Summary:</strong></p>
+                        <ul class="mt-2 space-y-1">
+                            <li>
+                                Present: {{ sessionStats?.present_count || 0 }}
+                            </li>
+                            <li>Late: {{ sessionStats?.late_count || 0 }}</li>
+                            <li class="text-red-600">
+                                Will be marked absent:
+                                {{ sessionStats?.unmarked_count || 0 }}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        @click="showEndSessionConfirm = false"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        @click="endSession"
+                        :disabled="isEndingSession"
+                    >
+                        <Loader2
+                            v-if="isEndingSession"
+                            class="mr-2 h-4 w-4 animate-spin"
+                        />
+                        End Session & Mark Absent
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

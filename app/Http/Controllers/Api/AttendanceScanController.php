@@ -75,13 +75,28 @@ class AttendanceScanController extends Controller
                 'status' => 'success',
             ]);
 
+            // Determine if student is late based on threshold
+            $status = 'present';
+            $lateThreshold = $session->late_threshold_minutes ?? 15; // Default 15 minutes
+            
+            if ($session->start_time) {
+                // Since start_time is cast to datetime, format it to get just the time string
+                $startTimeString = $session->start_time->format('H:i:s');
+                $sessionStart = \Carbon\Carbon::parse($session->scheduled_date->format('Y-m-d') . ' ' . $startTimeString);
+                $lateTime = $sessionStart->copy()->addMinutes($lateThreshold);
+                
+                if (now()->gt($lateTime)) {
+                    $status = 'late';
+                }
+            }
+
             // Create Attendance Record
             // Note: AttendanceRecord expects 'subject_id' but ClassSession has 'course_id'.
             // If they are not compatible, we leave subject_id null.
             $attendance = AttendanceRecord::create([
                 'session_id' => $session->id,
                 'student_id' => $student->id,
-                'status' => 'present',
+                'status' => $status,
                 'timestamp' => now(),
                 'recorded_by' => Auth::id(), 
                 'scan_event_id' => $scanEvent->id,
@@ -90,12 +105,13 @@ class AttendanceScanController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Attendance recorded successfully',
+                'message' => $status === 'late' ? 'Marked as late' : 'Attendance recorded successfully',
                 'student' => [
                     'id' => $student->id,
                     'name' => $student->first_name . ' ' . $student->last_name,
                     'student_id' => $student->student_id,
                 ],
+                'status' => $status,
                 'scan_status' => 'success',
             ]);
         });

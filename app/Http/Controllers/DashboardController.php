@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
+use App\Models\ClassSession;
 use App\Models\Grade;
 use App\Models\Student;
+use App\Models\Subject;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
     public function getStats(): JsonResponse
     {
+        $user = Auth::user();
         $totalStudents = Student::count();
         
         $today = \Carbon\Carbon::today();
@@ -23,37 +27,69 @@ class DashboardController extends Controller
         $averageGrade = Grade::avg('grade');
         $averageGrade = $averageGrade ? round($averageGrade, 2) : 0;
 
-        return response()->json([
-            'stats' => [
-                [
-                    'title' => 'Total Students',
-                    'value' => $totalStudents,
-                    'icon' => 'Users',
-                    'color' => 'text-blue-600',
-                    'bgColor' => 'bg-blue-100 dark:bg-blue-900/30',
-                ],
-                [
-                    'title' => 'Present Today',
-                    'value' => $presentToday,
-                    'icon' => 'CheckCircle2',
-                    'color' => 'text-green-600',
-                    'bgColor' => 'bg-green-100 dark:bg-green-900/30',
-                ],
-                [
-                    'title' => 'Average Grade',
-                    'value' => $averageGrade,
-                    'icon' => 'TrendingUp',
-                    'color' => 'text-purple-600',
-                    'bgColor' => 'bg-purple-100 dark:bg-purple-900/30',
-                ],
-                [
-                    'title' => 'Absent Today',
-                    'value' => $absentToday,
-                    'icon' => 'AlertCircle',
-                    'color' => 'text-red-600',
-                    'bgColor' => 'bg-red-100 dark:bg-red-900/30',
-                ],
+        // Calculate attendance rate for the last 30 days
+        $last30Days = \Carbon\Carbon::today()->subDays(30);
+        $recentRecords = AttendanceRecord::where('date', '>=', $last30Days)->get();
+        $totalRecords = $recentRecords->count();
+        $presentRecords = $recentRecords->whereIn('status', ['present', 'late'])->count();
+        $attendanceRate = $totalRecords > 0 ? round(($presentRecords / $totalRecords) * 100, 1) : 0;
+
+        // Check for active sessions (for teachers)
+        $activeSessions = 0;
+        if ($user && $user->teacher) {
+            $activeSessions = ClassSession::where('teacher_id', $user->teacher->id)
+                ->whereDate('scheduled_date', $today)
+                ->where('status', 'in_progress')
+                ->count();
+        }
+
+        $stats = [
+            [
+                'title' => 'Total Students',
+                'value' => $totalStudents,
+                'icon' => 'Users',
+                'color' => 'text-blue-600',
+                'bgColor' => 'bg-blue-100 dark:bg-blue-900/30',
             ],
+            [
+                'title' => 'Present Today',
+                'value' => $presentToday + $lateToday,
+                'icon' => 'CheckCircle2',
+                'color' => 'text-green-600',
+                'bgColor' => 'bg-green-100 dark:bg-green-900/30',
+                'subtitle' => $lateToday > 0 ? "+{$lateToday} late" : null,
+            ],
+            [
+                'title' => 'Attendance Rate',
+                'value' => $attendanceRate . '%',
+                'icon' => 'TrendingUp',
+                'color' => 'text-purple-600',
+                'bgColor' => 'bg-purple-100 dark:bg-purple-900/30',
+                'subtitle' => 'Last 30 days',
+            ],
+            [
+                'title' => 'Absent Today',
+                'value' => $absentToday,
+                'icon' => 'AlertCircle',
+                'color' => 'text-red-600',
+                'bgColor' => 'bg-red-100 dark:bg-red-900/30',
+            ],
+        ];
+
+        // Insert Active Sessions at the top if applicable
+        if ($activeSessions > 0) {
+            array_unshift($stats, [
+                'title' => 'Active Sessions',
+                'value' => $activeSessions,
+                'icon' => 'Clock', // Make sure to handle this icon in frontend
+                'color' => 'text-orange-600',
+                'bgColor' => 'bg-orange-100 dark:bg-orange-900/30',
+                'subtitle' => 'Happening now',
+            ]);
+        }
+
+        return response()->json([
+            'stats' => $stats,
             'latestDate' => $today->format('F d, Y'),
         ]);
     }

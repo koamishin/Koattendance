@@ -3,114 +3,184 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceRecord;
 use App\Models\ClassSession;
-use App\Models\Course;
-use App\Models\Section;
+use App\Models\Subject;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ClassSessionController extends Controller
 {
     /**
-     * Get or create a session for attendance.
-     * simplified for "Start Session" flow.
+     * Get today's sessions for the current teacher.
      */
-    public function start(Request $request)
+    public function today()
+    {
+        $user = Auth::user();
+        if (!$user->teacher) {
+            return response()->json(['sessions' => []]);
+        }
+
+        $sessions = ClassSession::with(['course', 'section'])
+            ->where('teacher_id', $user->teacher->id)
+            ->whereDate('scheduled_date', today())
+            ->get();
+
+        return response()->json(['sessions' => $sessions]);
+    }
+
+    /**
+     * Start or get an existing session for a subject.
+     */
+    public function startForSubject(Request $request)
     {
         $request->validate([
-            'course_id' => 'nullable|exists:courses,id', // or subject_id
-            'section_id' => 'nullable|exists:sections,id',
-            'subject_id' => 'nullable|exists:subjects,id', // if using subjects table
+            'subject_id' => 'required|exists:subjects,id',
+            'late_threshold_minutes' => 'nullable|integer|min:1|max:120',
         ]);
-        
-        // This is a simplified logic. In a real app, you might pick from a schedule.
-        // For now, we create a session for "Now".
-        
+
         $user = Auth::user();
         if (!$user->teacher) {
             return response()->json(['message' => 'Only teachers can start sessions'], 403);
         }
 
-        // For this demo, we assume we are creating/finding a session for the selected subject
-        // We'll map "subject" to "course" for now, or just use course_id if frontend sends it.
-        // The AttendanceController uses "Subject" model. ClassSession uses "Course". 
-        // We should align them. But to keep it working with existing AttendanceController:
-        
-        // If the frontend sends 'subject_id' (from the dropdown), we treat it as the course for the session.
-        // We might need to find a dummy section or create one if not provided.
-        
-        $subjectId = $request->input('subject_id');
-        
-        // Find existing session for today for this teacher and subject
-        $session = ClassSession::where('teacher_id', $user->teacher->id)
+        $subject = Subject::findOrFail($request->subject_id);
+
+        // Verify ownership
+        if ($subject->teacher_id !== $user->teacher->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Check for existing active session today
+        $existingSession = ClassSession::where('teacher_id', $user->teacher->id)
+            ->where('course_id', $subject->id) // Using course_id to store subject_id
             ->whereDate('scheduled_date', today())
-            // ->where('course_id', $subjectId) // Assuming subject_id maps to course_id
+            ->where('status', 'in_progress')
             ->first();
 
-        if (!$session) {
-             // Create a new session
-             // We need a section_id. Let's pick the first one or require it.
-             // For simplicity, let's create a "General" session if no section is picked.
-             // Or better, let's just create one.
-             
-             // We need a valid course_id and section_id because of foreign keys.
-             // This might be tricky without full data.
-             // Let's assume the user selects a subject (which acts as course).
-             // And we pick the first section for that course?
-             
-             // Hack: Find a course that matches the subject name or ID?
-             // Let's just create a session.
-             
-             // Requires: course_id, section_id.
-             // If the system is strictly relational, we need those.
-             
-             // Let's return a list of "Available Classes" for the teacher to pick from instead?
-             // Or just mock it for now if data is missing.
-             
-             // Let's assume the frontend passes valid IDs.
-             
-             return response()->json(['message' => 'Please select a valid class from your schedule (Not implemented yet)'], 400);
+        if ($existingSession) {
+            return response()->json([
+                'session' => $existingSession,
+                'message' => 'Existing session found',
+                'is_new' => false,
+            ]);
         }
+
+        // Create new session
+        $session = ClassSession::create([
+            'teacher_id' => $user->teacher->id,
+            'course_id' => $subject->id, // Storing subject_id in course_id
+            'section_id' => null,
+            'room' => 'Default',
+            'scheduled_date' => today(),
+            'start_time' => now()->format('H:i:s'),
+            'end_time' => now()->addHours(2)->format('H:i:s'),
+            'status' => 'in_progress',
+            'attendance_mode' => 'qr_scan',
+            'late_threshold_minutes' => $request->late_threshold_minutes ?? 15,
+        ]);
 
         return response()->json([
             'session' => $session,
+            'message' => 'Session started successfully',
+            'is_new' => true,
         ]);
     }
-    
-    // Alternative: List teacher's sessions for today
-    public function today() {
+
+    /**
+     * End a session and mark all unmarked students as absent.
+     */
+    public function endSession(Request $request, ClassSession $session)
+    {
         $user = Auth::user();
-        if (!$user->teacher) {
-            return response()->json([]);
-        }
-        
-        $sessions = ClassSession::with(['course', 'section'])
-            ->where('teacher_id', $user->teacher->id)
-            ->whereDate('scheduled_date', today())
-            ->get();
-            
-        return response()->json(['sessions' => $sessions]);
-    }
-    
-    // Create a new ad-hoc session
-    public function store(Request $request) {
-        $user = Auth::user();
-         if (!$user->teacher) {
+        if (!$user->teacher || $session->teacher_id !== $user->teacher->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
+
+        if ($session->status === 'completed') {
+            return response()->json(['message' => 'Session already ended'], 400);
+        }
+
+        // Get the subject/course ID
+        $subjectId = $session->course_id;
+
+        // Get all students enrolled in this subject
+        $subject = Subject::with('students')->find($subjectId);
         
-        // Validation...
-        
-        $session = ClassSession::create([
-            'teacher_id' => $user->teacher->id,
-            'course_id' => $request->course_id,
-            'section_id' => $request->section_id,
-            'scheduled_date' => today(),
-            'start_time' => now(),
-            'end_time' => now()->addHour(),
-            'status' => 'in_progress',
+        if (!$subject) {
+            return response()->json(['message' => 'Subject not found'], 404);
+        }
+
+        $enrolledStudentIds = $subject->students->pluck('id')->toArray();
+
+        // Get students who already have attendance records for this session
+        $presentStudentIds = AttendanceRecord::where('session_id', $session->id)
+            ->pluck('student_id')
+            ->toArray();
+
+        // Find students who haven't been marked (unmarked = absent)
+        $absentStudentIds = array_diff($enrolledStudentIds, $presentStudentIds);
+
+        $markedAbsentCount = 0;
+
+        DB::transaction(function () use ($session, $absentStudentIds, $subjectId, &$markedAbsentCount) {
+            foreach ($absentStudentIds as $studentId) {
+                AttendanceRecord::create([
+                    'session_id' => $session->id,
+                    'student_id' => $studentId,
+                    'subject_id' => $subjectId,
+                    'status' => 'absent',
+                    'timestamp' => now(),
+                    'recorded_by' => Auth::id(),
+                    'notes' => 'Auto-marked absent at session end',
+                ]);
+                $markedAbsentCount++;
+            }
+
+            // Update session status
+            $session->update([
+                'status' => 'completed',
+                'end_time' => now()->format('H:i:s'),
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'Session ended successfully',
+            'marked_absent' => $markedAbsentCount,
+            'total_present' => count($presentStudentIds),
+            'total_enrolled' => count($enrolledStudentIds),
         ]);
-        
-        return response()->json(['session' => $session]);
+    }
+
+    /**
+     * Get session status and attendance summary.
+     */
+    public function status(ClassSession $session)
+    {
+        $user = Auth::user();
+        if (!$user->teacher || $session->teacher_id !== $user->teacher->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $subjectId = $session->course_id;
+        $subject = Subject::with('students')->find($subjectId);
+
+        $enrolledCount = $subject ? $subject->students->count() : 0;
+
+        $attendanceStats = AttendanceRecord::where('session_id', $session->id)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        return response()->json([
+            'session' => $session,
+            'enrolled_count' => $enrolledCount,
+            'present_count' => $attendanceStats['present'] ?? 0,
+            'late_count' => $attendanceStats['late'] ?? 0,
+            'absent_count' => $attendanceStats['absent'] ?? 0,
+            'unmarked_count' => $enrolledCount - array_sum($attendanceStats),
+        ]);
     }
 }
