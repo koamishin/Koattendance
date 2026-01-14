@@ -33,9 +33,9 @@ RUN apk add --no-cache icu-dev $PHPIZE_DEPS \
 
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-scripts --no-autoloader
+RUN composer install --no-dev --optimize-autoloader --no-scripts --no-autoloader --ignore-platform-reqs
 COPY . .
-RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts
+RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts --ignore-platform-reqs
 
 # Build frontend assets using bun
 FROM oven/bun:1.3.2-alpine AS assets
