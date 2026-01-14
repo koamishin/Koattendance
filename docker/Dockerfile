@@ -40,6 +40,25 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts
 # Build frontend assets using bun
 FROM oven/bun:1.3.2-alpine AS assets
 WORKDIR /app
+
+# Install PHP for Wayfinder type generation
+# Wayfinder needs to boot Laravel to generate types
+RUN apk add --no-cache \
+    php \
+    php-cli \
+    php-phar \
+    php-mbstring \
+    php-openssl \
+    php-json \
+    php-dom \
+    php-xml \
+    php-tokenizer \
+    php-session \
+    php-ctype \
+    php-simplexml \
+    php-xmlwriter \
+    php-fileinfo
+
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY --from=composer-deps /app/vendor ./vendor
