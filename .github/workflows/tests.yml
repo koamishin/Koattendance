@@ -3,16 +3,16 @@ name: tests
 on:
   push:
     branches:
-      - develop
-      - main
+      - 1.x
   pull_request:
     branches:
-      - develop
+      - 1.x
       - main
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    environment: Testing
 
     steps:
       - name: Checkout
@@ -32,7 +32,10 @@ jobs:
           cache: 'npm'
 
       - name: Install Node Dependencies
-        run: npm ci
+        run: npm i
+
+      - name: Add Flux Credentials Loaded From ENV
+        run: composer config http-basic.composer.fluxui.dev "${{ secrets.FLUX_USERNAME }}" "${{ secrets.FLUX_LICENSE_KEY }}"
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
@@ -46,5 +49,5 @@ jobs:
       - name: Build Assets
         run: npm run build
 
-      - name: Tests
+      - name: Run Tests
         run: ./vendor/bin/pest
