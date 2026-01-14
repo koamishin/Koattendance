@@ -41,23 +41,26 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts --ig
 FROM oven/bun:1.3.2-alpine AS assets
 WORKDIR /app
 
-# Install PHP for Wayfinder type generation
-# Wayfinder needs to boot Laravel to generate types
-RUN apk add --no-cache \
-    php \
-    php-cli \
-    php-phar \
-    php-mbstring \
-    php-openssl \
-    php-json \
-    php-dom \
-    php-xml \
-    php-tokenizer \
-    php-session \
-    php-ctype \
-    php-simplexml \
-    php-xmlwriter \
-    php-fileinfo
+# Install PHP 8.4 from Edge for Wayfinder type generation
+RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
+    && echo "https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories \
+    && apk update \
+    && apk add --no-cache \
+    php84 \
+    php84-cli \
+    php84-phar \
+    php84-mbstring \
+    php84-openssl \
+    php84-json \
+    php84-dom \
+    php84-xml \
+    php84-tokenizer \
+    php84-session \
+    php84-ctype \
+    php84-simplexml \
+    php84-xmlwriter \
+    php84-fileinfo \
+    && ln -sf /usr/bin/php84 /usr/bin/php
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
