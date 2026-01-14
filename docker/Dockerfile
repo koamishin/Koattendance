@@ -60,7 +60,20 @@ RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repo
     php84-simplexml \
     php84-xmlwriter \
     php84-fileinfo \
+    php84-pdo \
+    php84-pdo_pgsql \
+    php84-pgsql \
+    php84-bcmath \
+    php84-intl \
+    php84-gd \
+    php84-zip \
+    php84-opcache \
+    php84-iconv \
+    php84-curl \
     && ln -sf /usr/bin/php84 /usr/bin/php
+
+# Set APP_KEY to prevent Laravel from crashing during build
+ENV APP_KEY=base64:c4+3/3Xl/3Xl/3Xl/3Xl/3Xl/3Xl/3Xl/3Xl/3Xl/0=
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
