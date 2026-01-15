@@ -7,6 +7,7 @@ import {
     AlertCircle,
     Calendar,
     CheckCircle2,
+    Clock,
     TrendingUp,
     Users,
 } from 'lucide-vue-next';
