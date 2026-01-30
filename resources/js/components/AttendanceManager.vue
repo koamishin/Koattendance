@@ -58,6 +58,7 @@ const showEndSessionConfirm = ref(false);
 const showStartSessionDialog = ref(false);
 const lateThresholdMinutes = ref(15);
 const sessionStats = ref<any>(null);
+const qrScannerRef = ref<InstanceType<typeof QrScanner> | null>(null);
 
 onMounted(async () => {
     // Load attendance with saved values or today
@@ -209,6 +210,9 @@ const handleScan = async (decodedText: string) => {
                 scanMessage.value = null;
             }
         }, 3000);
+        
+        // Reset scanner to allow immediate next scan
+        qrScannerRef.value?.resetScan();
     } catch (e: any) {
         scanStatus.value = 'error';
         scanMessage.value = e.response?.data?.message || 'Scan failed';
@@ -471,7 +475,7 @@ const getStatusBadge = (status: string) => {
                             </DialogHeader>
 
                             <div class="flex flex-col items-center gap-4 py-4">
-                                <QrScanner @scan="handleScan" />
+                                <QrScanner ref="qrScannerRef" @scan="handleScan" />
 
                                 <div
                                     v-if="scanMessage"

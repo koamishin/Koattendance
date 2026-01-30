@@ -1,347 +1,368 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
-import {
-    Html5Qrcode,
-    Html5QrcodeSupportedFormats,
-    type CameraDevice,
-} from 'html5-qrcode';
-import { AlertCircle, Camera, Focus, RefreshCw, Settings } from 'lucide-vue-next';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import jsQR from 'jsqr';
+import { AlertCircle, Camera, ImagePlus, RefreshCw, Video, X } from 'lucide-vue-next';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 const emit = defineEmits(['scan', 'error']);
 
-const scannerId = 'qr-reader';
-const html5QrCode = ref<Html5Qrcode | null>(null);
+// State
+const videoRef = ref<HTMLVideoElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 const isScanning = ref(false);
 const isLoading = ref(false);
-const hasCameraPermission = ref(false);
 const errorMessage = ref<string | null>(null);
-const availableCameras = ref<CameraDevice[]>([]);
-const selectedCameraId = ref<string | null>(null);
+const lastScannedCode = ref<string | null>(null);
+const isProcessing = ref(false);
+const scanCooldownTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const scanMode = ref<'camera' | 'upload'>('camera');
+const availableCameras = ref<MediaDeviceInfo[]>([]);
+const selectedCameraId = ref<string>('');
+const stream = ref<MediaStream | null>(null);
+const animationFrameId = ref<number | null>(null);
+const uploadedImageUrl = ref<string | null>(null);
 
-// Focus control state
-const showFocusControls = ref(false);
-const focusMode = ref<string>('continuous');
-const focusDistance = ref<number>(0);
-const focusCapabilities = ref<{
-    supportsFocusMode: boolean;
-    supportsFocusDistance: boolean;
-    focusModes: string[];
-    focusDistanceMin: number;
-    focusDistanceMax: number;
-    focusDistanceStep: number;
-}>({
-    supportsFocusMode: false,
-    supportsFocusDistance: false,
-    focusModes: [],
-    focusDistanceMin: 0,
-    focusDistanceMax: 100,
-    focusDistanceStep: 1,
-});
-const activeVideoTrack = ref<MediaStreamTrack | null>(null);
-
-// Fetch available cameras on mount
+// Get available cameras
 const fetchCameras = async () => {
     try {
-        const cameras = await Html5Qrcode.getCameras();
-        availableCameras.value = cameras;
-
-        if (cameras.length > 0) {
-            // Try to find a back camera first (for mobile), otherwise use the first available
-            const backCamera = cameras.find(
-                (c) =>
-                    c.label.toLowerCase().includes('back') ||
-                    c.label.toLowerCase().includes('environment') ||
-                    c.label.toLowerCase().includes('rear'),
-            );
-            selectedCameraId.value = backCamera?.id || cameras[0].id;
-        }
-    } catch (err) {
-        console.error('Error fetching cameras', err);
-        errorMessage.value =
-            'Could not detect cameras. Please ensure camera access is allowed.';
-    }
-};
-
-// Check and apply focus capabilities
-const checkFocusCapabilities = async () => {
-    const videoElement = document.querySelector('#qr-reader video') as HTMLVideoElement;
-    if (!videoElement || !videoElement.srcObject) return;
-
-    const stream = videoElement.srcObject as MediaStream;
-    const track = stream.getVideoTracks()[0];
-    if (!track) return;
-
-    activeVideoTrack.value = track;
-
-    try {
-        // Get capabilities - using 'any' because TypeScript doesn't have full types for these
-        const capabilities = track.getCapabilities() as any;
+        // First request permission to get labeled devices
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        tempStream.getTracks().forEach(track => track.stop());
         
-        // Check for focus mode support
-        if (capabilities.focusMode && capabilities.focusMode.length > 0) {
-            focusCapabilities.value.supportsFocusMode = true;
-            focusCapabilities.value.focusModes = capabilities.focusMode;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        availableCameras.value = devices.filter(d => d.kind === 'videoinput');
+        
+        if (availableCameras.value.length > 0 && !selectedCameraId.value) {
+            selectedCameraId.value = availableCameras.value[0].deviceId;
         }
-
-        // Check for focus distance support (manual focus)
-        if (capabilities.focusDistance) {
-            focusCapabilities.value.supportsFocusDistance = true;
-            focusCapabilities.value.focusDistanceMin = capabilities.focusDistance.min || 0;
-            focusCapabilities.value.focusDistanceMax = capabilities.focusDistance.max || 100;
-            focusCapabilities.value.focusDistanceStep = capabilities.focusDistance.step || 1;
-            
-            // Set initial focus distance to middle of range
-            focusDistance.value = (focusCapabilities.value.focusDistanceMin + focusCapabilities.value.focusDistanceMax) / 2;
-        }
-
-        // Get current settings
-        const settings = track.getSettings() as any;
-        if (settings.focusMode) {
-            focusMode.value = settings.focusMode;
-        }
-        if (settings.focusDistance !== undefined) {
-            focusDistance.value = settings.focusDistance;
-        }
-
-        console.log('Focus capabilities:', focusCapabilities.value);
     } catch (err) {
-        console.error('Error checking focus capabilities', err);
+        console.error('Error fetching cameras:', err);
     }
 };
 
-// Apply focus settings
-const applyFocusSettings = async () => {
-    if (!activeVideoTrack.value) return;
-
-    try {
-        const constraints: any = {};
-
-        if (focusCapabilities.value.supportsFocusMode) {
-            constraints.focusMode = focusMode.value;
-        }
-
-        // Only apply focus distance if in manual mode and supported
-        if (focusMode.value === 'manual' && focusCapabilities.value.supportsFocusDistance) {
-            constraints.focusDistance = focusDistance.value;
-        }
-
-        await activeVideoTrack.value.applyConstraints({ advanced: [constraints] });
-        console.log('Applied focus settings:', constraints);
-    } catch (err) {
-        console.error('Error applying focus settings', err);
-    }
-};
-
-// Trigger autofocus (one-shot)
-const triggerAutofocus = async () => {
-    if (!activeVideoTrack.value) return;
-
-    try {
-        // Briefly switch to single-shot autofocus then back
-        if (focusCapabilities.value.focusModes.includes('single-shot')) {
-            await activeVideoTrack.value.applyConstraints({
-                advanced: [{ focusMode: 'single-shot' } as any]
-            });
-        } else if (focusCapabilities.value.focusModes.includes('auto')) {
-            await activeVideoTrack.value.applyConstraints({
-                advanced: [{ focusMode: 'auto' } as any]
-            });
-        }
-    } catch (err) {
-        console.error('Error triggering autofocus', err);
-    }
-};
-
-const startScanning = async () => {
+// Start camera scanning
+const startCamera = async () => {
     errorMessage.value = null;
     isLoading.value = true;
-
-    // Reset focus capabilities
-    focusCapabilities.value = {
-        supportsFocusMode: false,
-        supportsFocusDistance: false,
-        focusModes: [],
-        focusDistanceMin: 0,
-        focusDistanceMax: 100,
-        focusDistanceStep: 1,
-    };
-
-    // If no cameras fetched yet, try to fetch them
-    if (availableCameras.value.length === 0) {
-        await fetchCameras();
-    }
-
-    if (!html5QrCode.value) {
-        html5QrCode.value = new Html5Qrcode(scannerId);
-    }
-
-    // Determine camera config: use selected camera ID or fallback strategies
-    let cameraConfig: { facingMode: string } | string;
-
-    if (selectedCameraId.value) {
-        // Use specific camera ID
-        cameraConfig = selectedCameraId.value;
-    } else if (availableCameras.value.length > 0) {
-        // Fallback to first available camera
-        cameraConfig = availableCameras.value[0].id;
-    } else {
-        // No specific camera, try environment then user
-        cameraConfig = { facingMode: 'environment' };
-    }
+    lastScannedCode.value = null;
 
     try {
-        await html5QrCode.value.start(
-            cameraConfig,
-            {
-                fps: 15, // Increased for faster detection
-                qrbox: { width: 250, height: 250 },
-                formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-                aspectRatio: 1.0, // Square aspect ratio for consistent scanning
-            },
-            (decodedText) => {
-                // Success callback
-                emit('scan', decodedText);
-            },
-            () => {
-                // Error callback (called frequently when no QR is found)
-                // Intentionally empty - this fires on every failed scan attempt
-            },
-        );
-        isScanning.value = true;
-        hasCameraPermission.value = true;
+        // Stop any existing stream
+        stopCamera();
 
-        // Check focus capabilities after camera starts
-        setTimeout(() => {
-            checkFocusCapabilities();
-        }, 500);
-    } catch (err: any) {
-        console.error('Error starting scanner with selected camera', err);
-
-        // If using camera ID failed, try with facingMode as fallback
-        if (typeof cameraConfig === 'string') {
-            try {
-                // Try with 'user' facing mode (front camera / default webcam)
-                await html5QrCode.value.start(
-                    { facingMode: 'user' },
-                    {
-                        fps: 15,
-                        qrbox: { width: 250, height: 250 },
-                        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-                        aspectRatio: 1.0,
-                    },
-                    (decodedText) => {
-                        emit('scan', decodedText);
-                    },
-                    () => {},
-                );
-                isScanning.value = true;
-                hasCameraPermission.value = true;
-                isLoading.value = false;
-
-                // Check focus capabilities
-                setTimeout(() => {
-                    checkFocusCapabilities();
-                }, 500);
-                return;
-            } catch (fallbackErr) {
-                console.error('Fallback camera also failed', fallbackErr);
+        const constraints: MediaStreamConstraints = {
+            video: {
+                deviceId: selectedCameraId.value ? { exact: selectedCameraId.value } : undefined,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: selectedCameraId.value ? undefined : 'environment'
             }
+        };
+
+        stream.value = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        if (videoRef.value) {
+            videoRef.value.srcObject = stream.value;
+            await videoRef.value.play();
+            isScanning.value = true;
+            
+            // Start scanning loop
+            requestAnimationFrame(scanFrame);
         }
-
-        errorMessage.value =
-            err.message ||
-            'Could not access camera. Please ensure you have granted permission and no other app is using the camera.';
-        isScanning.value = false;
-        emit('error', err);
-    }
-
-    isLoading.value = false;
-};
-
-const stopScanning = async () => {
-    if (html5QrCode.value && isScanning.value) {
+    } catch (err: any) {
+        console.error('Error starting camera:', err);
+        
+        // Try fallback without specific device
         try {
-            await html5QrCode.value.stop();
-            isScanning.value = false;
-            activeVideoTrack.value = null;
-            showFocusControls.value = false;
-        } catch (err) {
-            console.error('Failed to stop scanner', err);
+            stream.value = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'user' } 
+            });
+            
+            if (videoRef.value) {
+                videoRef.value.srcObject = stream.value;
+                await videoRef.value.play();
+                isScanning.value = true;
+                requestAnimationFrame(scanFrame);
+            }
+        } catch (fallbackErr: any) {
+            errorMessage.value = fallbackErr.message || 'Could not access camera. Please grant permission.';
+            emit('error', fallbackErr);
         }
+    } finally {
+        isLoading.value = false;
     }
 };
 
+// Stop camera
+const stopCamera = () => {
+    if (animationFrameId.value) {
+        cancelAnimationFrame(animationFrameId.value);
+        animationFrameId.value = null;
+    }
+    
+    if (stream.value) {
+        stream.value.getTracks().forEach(track => track.stop());
+        stream.value = null;
+    }
+    
+    if (videoRef.value) {
+        videoRef.value.srcObject = null;
+    }
+    
+    isScanning.value = false;
+};
+
+// Scan a single frame
+const scanFrame = () => {
+    if (!isScanning.value || !videoRef.value || !canvasRef.value) return;
+
+    const video = videoRef.value;
+    const canvas = canvasRef.value;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+        animationFrameId.value = requestAnimationFrame(scanFrame);
+        return;
+    }
+
+    // Set canvas size to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw video frame to canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Get image data and scan for QR code
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+    });
+
+    if (code && code.data) {
+        // Only emit if it's a new code and not currently processing
+        if (code.data !== lastScannedCode.value && !isProcessing.value) {
+            lastScannedCode.value = code.data;
+            isProcessing.value = true;
+            emit('scan', code.data);
+            
+            // Draw detection box
+            drawDetectionBox(ctx, code.location);
+            
+            // Auto-reset after 3 seconds to allow scanning next student
+            if (scanCooldownTimer.value) {
+                clearTimeout(scanCooldownTimer.value);
+            }
+            scanCooldownTimer.value = setTimeout(() => {
+                lastScannedCode.value = null;
+                isProcessing.value = false;
+            }, 3000);
+        }
+    }
+
+    // Continue scanning
+    animationFrameId.value = requestAnimationFrame(scanFrame);
+};
+
+// Draw a box around detected QR code
+const drawDetectionBox = (ctx: CanvasRenderingContext2D, location: any) => {
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
+    ctx.lineTo(location.topRightCorner.x, location.topRightCorner.y);
+    ctx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y);
+    ctx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y);
+    ctx.closePath();
+    ctx.stroke();
+};
+
+// Handle file upload
+const handleFileUpload = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    errorMessage.value = null;
+    lastScannedCode.value = null;
+
+    try {
+        // Create image from file
+        const imageUrl = URL.createObjectURL(file);
+        uploadedImageUrl.value = imageUrl;
+        
+        const img = new Image();
+        img.onload = () => {
+            // Create canvas and draw image
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                errorMessage.value = 'Could not process image';
+                return;
+            }
+            
+            ctx.drawImage(img, 0, 0);
+            
+            // Get image data and scan
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'attemptBoth',
+            });
+            
+            if (code && code.data) {
+                lastScannedCode.value = code.data;
+                emit('scan', code.data);
+            } else {
+                errorMessage.value = 'No QR code found in image. Please try a clearer image.';
+            }
+        };
+        
+        img.onerror = () => {
+            errorMessage.value = 'Could not load image';
+        };
+        
+        img.src = imageUrl;
+    } catch (err: any) {
+        errorMessage.value = err.message || 'Error processing image';
+    }
+    
+    // Reset file input
+    input.value = '';
+};
+
+// Clear uploaded image
+const clearUploadedImage = () => {
+    if (uploadedImageUrl.value) {
+        URL.revokeObjectURL(uploadedImageUrl.value);
+        uploadedImageUrl.value = null;
+    }
+    lastScannedCode.value = null;
+    errorMessage.value = null;
+};
+
+// Take snapshot from camera
+const takeSnapshot = () => {
+    if (!videoRef.value || !canvasRef.value) return;
+    
+    const video = videoRef.value;
+    const canvas = canvasRef.value;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    
+    // Get image data and scan with more attempts
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth',
+    });
+    
+    if (code && code.data) {
+        lastScannedCode.value = code.data;
+        emit('scan', code.data);
+        drawDetectionBox(ctx, code.location);
+    } else {
+        errorMessage.value = 'No QR code detected. Try moving closer or adjusting angle.';
+        setTimeout(() => {
+            errorMessage.value = null;
+        }, 3000);
+    }
+};
+
+// Switch camera
 const switchCamera = async () => {
     if (availableCameras.value.length <= 1) return;
-
-    // Find next camera in the list
+    
     const currentIndex = availableCameras.value.findIndex(
-        (c) => c.id === selectedCameraId.value,
+        c => c.deviceId === selectedCameraId.value
     );
     const nextIndex = (currentIndex + 1) % availableCameras.value.length;
-    selectedCameraId.value = availableCameras.value[nextIndex].id;
-
-    // Restart scanning with new camera
+    selectedCameraId.value = availableCameras.value[nextIndex].deviceId;
+    
     if (isScanning.value) {
-        await stopScanning();
-        await startScanning();
+        await startCamera();
     }
 };
 
-// Watch for focus mode changes
-watch(focusMode, () => {
-    applyFocusSettings();
-});
-
-// Watch for focus distance changes (debounced)
-let focusDistanceTimeout: ReturnType<typeof setTimeout> | null = null;
-watch(focusDistance, () => {
-    if (focusDistanceTimeout) clearTimeout(focusDistanceTimeout);
-    focusDistanceTimeout = setTimeout(() => {
-        applyFocusSettings();
-    }, 100);
-});
-
-// Watch for camera changes and restart if needed
-watch(selectedCameraId, async (newId, oldId) => {
-    if (newId && oldId && isScanning.value) {
-        await stopScanning();
-        await startScanning();
-    }
-});
-
+// Lifecycle
 onMounted(() => {
     fetchCameras();
 });
 
 onUnmounted(() => {
-    stopScanning();
-    if (focusDistanceTimeout) clearTimeout(focusDistanceTimeout);
+    stopCamera();
+    if (uploadedImageUrl.value) {
+        URL.revokeObjectURL(uploadedImageUrl.value);
+    }
 });
 
-defineExpose({ startScanning, stopScanning });
+// Reset scan state (call after successful API response to allow immediate next scan)
+const resetScan = () => {
+    lastScannedCode.value = null;
+    isProcessing.value = false;
+    if (scanCooldownTimer.value) {
+        clearTimeout(scanCooldownTimer.value);
+        scanCooldownTimer.value = null;
+    }
+};
+
+defineExpose({ startCamera, stopCamera, resetScan });
 </script>
 
 <template>
     <div class="flex w-full flex-col items-center gap-4">
-        <!-- Camera selector (if multiple cameras) -->
+        <!-- Mode Toggle -->
+        <div class="flex w-full max-w-md rounded-lg border bg-muted/30 p-1">
+            <button
+                @click="scanMode = 'camera'; clearUploadedImage()"
+                :class="[
+                    'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    scanMode === 'camera' 
+                        ? 'bg-background shadow-sm' 
+                        : 'hover:bg-muted'
+                ]"
+            >
+                <Video class="h-4 w-4" />
+                Camera
+            </button>
+            <button
+                @click="scanMode = 'upload'; stopCamera()"
+                :class="[
+                    'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    scanMode === 'upload' 
+                        ? 'bg-background shadow-sm' 
+                        : 'hover:bg-muted'
+                ]"
+            >
+                <ImagePlus class="h-4 w-4" />
+                Upload Image
+            </button>
+        </div>
+
+        <!-- Camera Selector -->
         <div
-            v-if="availableCameras.length > 1"
+            v-if="scanMode === 'camera' && availableCameras.length > 1"
             class="flex w-full max-w-md items-center gap-2"
         >
             <Camera class="h-4 w-4 text-muted-foreground" />
             <select
                 v-model="selectedCameraId"
+                @change="isScanning && startCamera()"
                 class="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
                 :disabled="isLoading"
             >
                 <option
                     v-for="camera in availableCameras"
-                    :key="camera.id"
-                    :value="camera.id"
+                    :key="camera.deviceId"
+                    :value="camera.deviceId"
                 >
-                    {{ camera.label || `Camera ${camera.id.slice(0, 8)}` }}
+                    {{ camera.label || `Camera ${camera.deviceId.slice(0, 8)}` }}
                 </option>
             </select>
             <Button
@@ -355,111 +376,114 @@ defineExpose({ startScanning, stopScanning });
             </Button>
         </div>
 
-        <div
-            :id="scannerId"
-            class="w-full max-w-md overflow-hidden rounded-lg border border-gray-700 bg-black"
-            style="min-height: 300px"
-        ></div>
-
-        <!-- Focus Controls -->
-        <div
-            v-if="isScanning && (focusCapabilities.supportsFocusMode || focusCapabilities.supportsFocusDistance)"
-            class="w-full max-w-md"
-        >
-            <button
-                @click="showFocusControls = !showFocusControls"
-                class="flex w-full items-center justify-between rounded-md border bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
-            >
-                <span class="flex items-center gap-2">
-                    <Settings class="h-4 w-4" />
-                    Focus Controls
-                </span>
-                <span class="text-xs text-muted-foreground">
-                    {{ showFocusControls ? 'Hide' : 'Show' }}
-                </span>
-            </button>
-
-            <div
-                v-if="showFocusControls"
-                class="mt-2 space-y-3 rounded-md border bg-card p-3"
-            >
-                <!-- Focus Mode -->
-                <div v-if="focusCapabilities.supportsFocusMode" class="space-y-2">
-                    <label class="flex items-center gap-2 text-sm font-medium">
-                        <Focus class="h-4 w-4" />
-                        Focus Mode
-                    </label>
-                    <div class="flex flex-wrap gap-2">
-                        <button
-                            v-for="mode in focusCapabilities.focusModes"
-                            :key="mode"
-                            @click="focusMode = mode"
-                            :class="[
-                                'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                                focusMode === mode
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted hover:bg-muted/80'
-                            ]"
-                        >
-                            {{ mode === 'continuous' ? 'Auto (Continuous)' : mode === 'single-shot' ? 'Single Shot' : mode.charAt(0).toUpperCase() + mode.slice(1) }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual Focus Distance -->
-                <div v-if="focusCapabilities.supportsFocusDistance && focusMode === 'manual'" class="space-y-2">
-                    <label class="flex items-center justify-between text-sm font-medium">
-                        <span>Focus Distance</span>
-                        <span class="text-xs text-muted-foreground">{{ focusDistance.toFixed(1) }}</span>
-                    </label>
-                    <input
-                        type="range"
-                        v-model.number="focusDistance"
-                        :min="focusCapabilities.focusDistanceMin"
-                        :max="focusCapabilities.focusDistanceMax"
-                        :step="focusCapabilities.focusDistanceStep"
-                        class="w-full accent-primary"
-                    />
-                    <div class="flex justify-between text-xs text-muted-foreground">
-                        <span>Near</span>
-                        <span>Far</span>
-                    </div>
-                </div>
-
-                <!-- Autofocus Button -->
-                <Button
-                    v-if="focusCapabilities.focusModes.includes('single-shot') || focusCapabilities.focusModes.includes('auto')"
-                    variant="outline"
-                    size="sm"
+        <!-- Camera Mode -->
+        <div v-if="scanMode === 'camera'" class="w-full max-w-md">
+            <!-- Video element -->
+            <div class="relative overflow-hidden rounded-lg border border-gray-700 bg-black">
+                <video
+                    ref="videoRef"
                     class="w-full"
-                    @click="triggerAutofocus"
+                    style="min-height: 300px; object-fit: cover;"
+                    playsinline
+                    muted
+                ></video>
+                
+                <!-- Detection overlay (canvas renders on top) -->
+                <canvas
+                    ref="canvasRef"
+                    class="pointer-events-none absolute inset-0 h-full w-full"
+                    style="display: none;"
+                ></canvas>
+                
+                <!-- Scanning indicator -->
+                <div
+                    v-if="isScanning"
+                    class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-white"
                 >
-                    <Focus class="mr-2 h-4 w-4" />
-                    Trigger Autofocus
-                </Button>
+                    <span class="h-2 w-2 animate-pulse rounded-full bg-green-500"></span>
+                    Scanning...
+                </div>
+            </div>
 
-                <!-- No Focus Support Message -->
-                <p
-                    v-if="!focusCapabilities.supportsFocusMode && !focusCapabilities.supportsFocusDistance"
-                    class="text-center text-xs text-muted-foreground"
+            <!-- Camera Controls -->
+            <div class="mt-3 flex flex-wrap justify-center gap-2">
+                <Button
+                    v-if="!isScanning"
+                    @click="startCamera"
+                    :disabled="isLoading"
                 >
-                    Your camera doesn't report focus controls. Try moving the QR code closer or further from the camera.
-                </p>
+                    <Camera v-if="!isLoading" class="mr-2 h-4 w-4" />
+                    <RefreshCw v-else class="mr-2 h-4 w-4 animate-spin" />
+                    {{ isLoading ? 'Starting...' : 'Start Camera' }}
+                </Button>
+                <template v-else>
+                    <Button variant="secondary" @click="takeSnapshot">
+                        <Camera class="mr-2 h-4 w-4" />
+                        Capture & Scan
+                    </Button>
+                    <Button variant="destructive" @click="stopCamera">
+                        Stop Camera
+                    </Button>
+                </template>
             </div>
         </div>
 
-        <!-- Tip for blurry cameras -->
-        <div
-            v-if="isScanning && !focusCapabilities.supportsFocusMode && !focusCapabilities.supportsFocusDistance"
-            class="flex max-w-md items-start gap-2 rounded-md bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
-        >
-            <Focus class="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>
-                <strong>Tip:</strong> If the image is blurry, try moving the QR code 20-40cm from the camera. 
-                You may also check your HIKVision camera's driver software for focus settings.
-            </span>
+        <!-- Upload Mode -->
+        <div v-else class="w-full max-w-md">
+            <!-- Upload area -->
+            <div
+                v-if="!uploadedImageUrl"
+                @click="fileInputRef?.click()"
+                @dragover.prevent
+                @drop.prevent="(e) => { if (e.dataTransfer?.files[0]) { const dt = new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); fileInputRef!.files = dt.files; handleFileUpload({ target: fileInputRef } as any); } }"
+                class="flex min-h-[300px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 bg-muted/30 transition-colors hover:border-primary hover:bg-muted/50"
+            >
+                <ImagePlus class="mb-3 h-12 w-12 text-muted-foreground" />
+                <p class="text-sm font-medium">Click to upload or drag image</p>
+                <p class="mt-1 text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+            </div>
+
+            <!-- Uploaded image preview -->
+            <div v-else class="relative">
+                <img
+                    :src="uploadedImageUrl"
+                    class="w-full rounded-lg border"
+                    alt="Uploaded QR code"
+                />
+                <button
+                    @click="clearUploadedImage"
+                    class="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white hover:bg-black"
+                >
+                    <X class="h-4 w-4" />
+                </button>
+            </div>
+
+            <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleFileUpload"
+            />
+
+            <div class="mt-3 flex justify-center">
+                <Button @click="fileInputRef?.click()">
+                    <ImagePlus class="mr-2 h-4 w-4" />
+                    {{ uploadedImageUrl ? 'Upload Another' : 'Select Image' }}
+                </Button>
+            </div>
         </div>
 
+        <!-- Success indicator -->
+        <div
+            v-if="lastScannedCode"
+            class="flex w-full max-w-md items-center gap-2 rounded-md bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300"
+        >
+            <Camera class="h-4 w-4 flex-shrink-0" />
+            <span class="font-medium">QR Code detected!</span>
+        </div>
+
+        <!-- Error message -->
         <div
             v-if="errorMessage"
             class="flex max-w-md items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400"
@@ -468,38 +492,23 @@ defineExpose({ startScanning, stopScanning });
             <span>{{ errorMessage }}</span>
         </div>
 
-        <div
-            v-if="availableCameras.length === 0 && !errorMessage && !isLoading"
-            class="text-sm text-muted-foreground"
-        >
-            Click "Start Camera" to begin scanning
-        </div>
-
-        <div class="flex gap-2">
-            <Button
-                v-if="!isScanning"
-                @click="startScanning"
-                :disabled="isLoading"
-            >
-                <Camera v-if="!isLoading" class="mr-2 h-4 w-4" />
-                <RefreshCw v-else class="mr-2 h-4 w-4 animate-spin" />
-                {{ isLoading ? 'Starting...' : 'Start Camera' }}
-            </Button>
-            <Button v-else variant="destructive" @click="stopScanning">
-                Stop Camera
-            </Button>
+        <!-- Tips -->
+        <div class="w-full max-w-md rounded-md bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            <p class="font-medium">Tips for better scanning:</p>
+            <ul class="mt-1 list-inside list-disc space-y-0.5">
+                <li>Hold QR code 15-30cm from camera</li>
+                <li>Ensure good lighting (avoid shadows)</li>
+                <li>Keep the QR code flat and steady</li>
+                <li>Use "Capture & Scan" button if auto-detect isn't working</li>
+                <li>Try uploading a photo if camera scanning fails</li>
+            </ul>
         </div>
     </div>
 </template>
 
-<style>
-/* Custom styles for the scanner overlay if needed */
-#qr-reader video {
-    object-fit: cover;
-    border-radius: 0.5rem;
-}
-
-#qr-reader__scan_region {
-    min-height: 280px;
+<style scoped>
+video {
+    transform: scaleX(-1); /* Mirror the video for natural feel */
 }
 </style>
+
