@@ -91,17 +91,16 @@ class AttendanceScanController extends Controller
             }
 
             // Create Attendance Record
-            // Note: AttendanceRecord expects 'subject_id' but ClassSession has 'course_id'.
-            // If they are not compatible, we leave subject_id null.
+            // Note: ClassSession stores subject_id in course_id field
             $attendance = AttendanceRecord::create([
                 'session_id' => $session->id,
                 'student_id' => $student->id,
+                'subject_id' => $session->course_id, // course_id stores subject_id
                 'status' => $status,
                 'timestamp' => now(),
                 'recorded_by' => Auth::id(), 
                 'scan_event_id' => $scanEvent->id,
                 'device_info' => $request->device_info,
-                // 'subject_id' => $session->course_id, // Uncomment if course_id maps to subject_id
             ]);
 
             return response()->json([
