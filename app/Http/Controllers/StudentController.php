@@ -7,6 +7,7 @@ use App\Models\Seating;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -40,7 +41,7 @@ class StudentController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'first_name' => 'required|string|max:255',
@@ -53,6 +54,7 @@ class StudentController extends Controller
             'gender' => 'nullable|string|in:male,female,other',
             'address' => 'nullable|string|max:500',
             'subject_id' => 'nullable|integer|exists:subjects,id',
+            'current_grade_level' => 'nullable|string|max:50',
             // Guardian fields
             'guardian_name' => 'nullable|string|max:255',
             'guardian_email' => 'nullable|email|max:255',
@@ -91,6 +93,7 @@ class StudentController extends Controller
                 'gender' => $validated['gender'] ?? null,
                 'address' => $validated['address'] ?? null,
                 'guardian_id' => $guardianId,
+                'current_grade_level' => $validated['current_grade_level'] ?? null,
                 'status' => 'active',
                 'enrollment_date' => now()->toDateString(),
                 'qr_code_active' => true,
@@ -106,17 +109,12 @@ class StudentController extends Controller
             
             DB::commit();
 
-            return response()->json([
-                'message' => 'Student created successfully',
-                'student' => $student->load('guardian'),
-            ], 201);
+            return back()->with('success', 'Student created successfully');
             
         } catch (\Exception $e) {
             DB::rollBack();
             
-            return response()->json([
-                'message' => 'Failed to create student: ' . $e->getMessage(),
-            ], 500);
+            return back()->with('error', 'Failed to create student: ' . $e->getMessage());
         }
     }
 

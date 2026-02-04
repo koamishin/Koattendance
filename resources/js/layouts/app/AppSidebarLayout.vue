@@ -3,6 +3,7 @@ import AppContent from '@/components/AppContent.vue';
 import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
+import Sonner from '@/components/ui/sonner/Sonner.vue';
 import MobileBottomNav from '@/components/MobileBottomNav.vue';
 import type { BreadcrumbItemType } from '@/types';
 
@@ -24,4 +25,5 @@ withDefaults(defineProps<Props>(), {
         </AppContent>
     </AppShell>
     <MobileBottomNav />
+    <Sonner />
 </template>

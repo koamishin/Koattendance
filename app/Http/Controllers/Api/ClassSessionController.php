@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceRecord;
 use App\Models\ClassSession;
+use App\Models\Course;
 use App\Models\Subject;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +38,7 @@ class ClassSessionController extends Controller
     {
         $request->validate([
             'subject_id' => 'required|exists:subjects,id',
+            'scheduled_date' => 'nullable|date',
             'late_threshold_minutes' => 'nullable|integer|min:1|max:120',
         ]);
 
@@ -46,43 +48,91 @@ class ClassSessionController extends Controller
         }
 
         $subject = Subject::findOrFail($request->subject_id);
+        $scheduledDate = $request->scheduled_date
+            ? \Carbon\Carbon::parse($request->scheduled_date)->startOfDay()
+            : today();
+        $course = Course::firstOrCreate(
+            ['code' => 'SUBJ-'.$subject->id],
+            [
+                'name' => $subject->name,
+                'description' => $subject->description,
+                'grade_level' => 1,
+                'credits' => 1,
+                'type' => 'core',
+                'is_active' => true,
+            ],
+        );
 
         // Verify ownership
         if ($subject->teacher_id !== $user->teacher->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Check for existing active session today
+        // Check for existing active session for the chosen date
         $existingSession = ClassSession::where('teacher_id', $user->teacher->id)
-            ->where('course_id', $subject->id) // Using course_id to store subject_id
-            ->whereDate('scheduled_date', today())
+            ->where(function ($query) use ($subject, $course) {
+                $query->where('subject_id', $subject->id)
+                    ->orWhere('course_id', $course->id)
+                    ->orWhere('course_id', $subject->id);
+            })
+            ->whereDate('scheduled_date', $scheduledDate)
             ->where('status', 'in_progress')
             ->first();
 
         if ($existingSession) {
+            $sessionPayload = $existingSession->toArray();
+            $sessionPayload['scheduled_date'] = $existingSession->scheduled_date?->format('Y-m-d');
+
             return response()->json([
-                'session' => $existingSession,
+                'session' => $sessionPayload,
                 'message' => 'Existing session found',
                 'is_new' => false,
             ]);
         }
 
+        $existingSessionForDate = ClassSession::where('teacher_id', $user->teacher->id)
+            ->where(function ($query) use ($subject, $course) {
+                $query->where('subject_id', $subject->id)
+                    ->orWhere('course_id', $course->id)
+                    ->orWhere('course_id', $subject->id);
+            })
+            ->whereDate('scheduled_date', $scheduledDate)
+            ->latest('id')
+            ->first();
+
+        if ($existingSessionForDate) {
+            $sessionPayload = $existingSessionForDate->toArray();
+            $sessionPayload['scheduled_date'] = $existingSessionForDate->scheduled_date?->format('Y-m-d');
+
+            return response()->json([
+                'session' => $sessionPayload,
+                'message' => 'Existing session found',
+                'is_new' => false,
+            ]);
+        }
+
+        $status = $scheduledDate->isPast() ? 'completed' : 'in_progress';
+
         // Create new session
         $session = ClassSession::create([
             'teacher_id' => $user->teacher->id,
-            'course_id' => $subject->id, // Storing subject_id in course_id
+            'subject_id' => $subject->id,
+            'course_id' => $course->id,
             'section_id' => null,
             'room' => 'Default',
-            'scheduled_date' => today(),
+            'scheduled_date' => $scheduledDate,
             'start_time' => now()->format('H:i:s'),
             'end_time' => now()->addHours(2)->format('H:i:s'),
-            'status' => 'in_progress',
+            'status' => $status,
             'attendance_mode' => 'qr_scan',
             'late_threshold_minutes' => $request->late_threshold_minutes ?? 15,
         ]);
 
+        $sessionPayload = $session->toArray();
+        $sessionPayload['scheduled_date'] = $session->scheduled_date?->format('Y-m-d');
+
         return response()->json([
-            'session' => $session,
+            'session' => $sessionPayload,
             'message' => 'Session started successfully',
             'is_new' => true,
         ]);
@@ -102,8 +152,7 @@ class ClassSessionController extends Controller
             return response()->json(['message' => 'Session already ended'], 400);
         }
 
-        // Get the subject/course ID
-        $subjectId = $session->course_id;
+        $subjectId = $session->subject_id;
 
         // Get all students enrolled in this subject
         $subject = Subject::with('students')->find($subjectId);
@@ -135,6 +184,7 @@ class ClassSessionController extends Controller
                     'recorded_by' => Auth::id(),
                     'notes' => 'Auto-marked absent at session end',
                 ]);
+
                 $markedAbsentCount++;
             }
 
@@ -163,7 +213,7 @@ class ClassSessionController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $subjectId = $session->course_id;
+        $subjectId = $session->subject_id;
         $subject = Subject::with('students')->find($subjectId);
 
         $enrolledCount = $subject ? $subject->students->count() : 0;

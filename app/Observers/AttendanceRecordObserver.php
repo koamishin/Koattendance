@@ -25,6 +25,7 @@ class AttendanceRecordObserver
         if ($attendanceRecord->isDirty('status')) {
             $this->sendNotification($attendanceRecord);
         }
+
     }
 
     /**

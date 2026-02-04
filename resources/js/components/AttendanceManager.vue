@@ -35,7 +35,6 @@ const page = usePage();
 const roles = page.props.auth.roles;
 
 const attendanceRecords = ref<any[]>([]);
-const groupedRecords = ref<Record<string, any[]>>({});
 const stats = ref({
     present: 0,
     absent: 0,
@@ -50,6 +49,7 @@ const editingStatus = ref<string>('');
 const isScanningOpen = ref(false);
 const currentSessionId = ref<number | null>(null);
 const currentSession = ref<any>(null);
+const selectedSessionId = ref<number | null>(null);
 const scanStatus = ref<string | null>(null);
 const scanMessage = ref<string | null>(null);
 const isStartingSession = ref(false);
@@ -61,46 +61,16 @@ const sessionStats = ref<any>(null);
 const qrScannerRef = ref<InstanceType<typeof QrScanner> | null>(null);
 
 onMounted(async () => {
-    // Load attendance with saved values or today
     const today = new Date().toISOString().split('T')[0];
     await loadAttendance(today);
-
-    // If teacher, try to fetch today's session
-    if (roles?.isTeacher) {
-        await fetchTodaySession();
-    }
 });
 
 watch(
     () => props.subjectId,
     () => {
         loadAttendance(selectedDateValue.value || undefined);
-        if (roles?.isTeacher) {
-            fetchTodaySession();
-        }
     },
 );
-
-const fetchTodaySession = async () => {
-    try {
-        const response = await axios.get('/api/attendance/sessions/today');
-        if (response.data.sessions && response.data.sessions.length > 0) {
-            // Find session for this subject
-            const session = response.data.sessions.find(
-                (s: any) =>
-                    s.course_id == props.subjectId &&
-                    s.status === 'in_progress',
-            );
-            if (session) {
-                currentSessionId.value = session.id;
-                currentSession.value = session;
-                await fetchSessionStats();
-            }
-        }
-    } catch (e) {
-        console.error('Failed to fetch sessions', e);
-    }
-};
 
 const fetchSessionStats = async () => {
     if (!currentSessionId.value) return;
@@ -117,13 +87,20 @@ const fetchSessionStats = async () => {
 const startSession = async () => {
     isStartingSession.value = true;
     try {
+        const scheduledDate =
+            selectedDateValue.value || new Date().toISOString().split('T')[0];
         const response = await axios.post('/api/attendance/sessions/start', {
             subject_id: props.subjectId,
+            scheduled_date: scheduledDate,
             late_threshold_minutes: lateThresholdMinutes.value,
         });
         currentSessionId.value = response.data.session.id;
         currentSession.value = response.data.session;
+        selectedSessionId.value = response.data.session.id;
+        selectedDateValue.value =
+            response.data.session.scheduled_date || scheduledDate;
         await fetchSessionStats();
+        await loadAttendance(selectedDateValue.value || undefined);
         showStartSessionDialog.value = false;
         scanMessage.value = response.data.is_new
             ? `Session started! Students scanning after ${lateThresholdMinutes.value} minutes will be marked late.`
@@ -200,7 +177,7 @@ const handleScan = async (decodedText: string) => {
         scanMessage.value = `Marked ${statusLabel}: ${response.data.student.name}`;
 
         // Refresh attendance list and stats
-        loadAttendance(selectedDateValue.value || undefined);
+        loadAttendance(currentSession.value?.scheduled_date || selectedDateValue.value || undefined);
         fetchSessionStats();
 
         // Clear message after delay
@@ -232,10 +209,20 @@ const loadAttendance = async (date?: string) => {
         const response = await fetch(url.toString());
         const data = await response.json();
         attendanceRecords.value = data.attendanceRecords;
-        groupedRecords.value = data.groupedRecords;
         stats.value = data.stats;
         selectedDate.value = data.selectedDate;
         availableDates.value = data.availableDates;
+        selectedSessionId.value = data.session?.id || null;
+
+        if (data.session && data.session.status === 'in_progress') {
+            currentSessionId.value = data.session.id;
+            currentSession.value = data.session;
+            await fetchSessionStats();
+        } else {
+            currentSessionId.value = null;
+            currentSession.value = null;
+            sessionStats.value = null;
+        }
 
         if (data.selectedDate) {
             if (date) selectedDateValue.value = date;
@@ -283,9 +270,10 @@ const updateStatus = (record: any, index: number, newStatus: string) => {
     const payload: any = { status: newStatus };
 
     if (!record.id) {
-        payload.studentName = record.name;
+        payload.student_id = record.student_id;
         payload.date = selectedDateValue.value;
         payload.subjectId = props.subjectId;
+        payload.session_id = selectedSessionId.value;
     }
 
     router.post(`/attendance/${record.id || 'null'}/update-status`, payload, {
