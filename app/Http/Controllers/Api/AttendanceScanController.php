@@ -27,6 +27,12 @@ class AttendanceScanController extends Controller
         ]);
 
         $session = ClassSession::findOrFail($request->session_id);
+        if ($session->status !== 'in_progress') {
+            return response()->json([
+                'message' => 'Session is not active',
+                'scan_status' => 'failed',
+            ], 400);
+        }
 
         try {
             $data = Crypt::decrypt($request->qr_code);
@@ -54,16 +60,11 @@ class AttendanceScanController extends Controller
              return $this->recordFailedScan($session, $student, 'QR Data mismatch', $request);
         }
 
-        // Check if already scanned for this session
         $existingRecord = AttendanceRecord::where('session_id', $session->id)
             ->where('student_id', $student->id)
             ->first();
 
-        if ($existingRecord) {
-             return $this->recordFailedScan($session, $student, 'Duplicate scan', $request);
-        }
-
-        return DB::transaction(function () use ($session, $student, $request) {
+        return DB::transaction(function () use ($session, $student, $request, $existingRecord) {
             // Create Scan Event
             $scanEvent = QrScanEvent::create([
                 'session_id' => $session->id,
@@ -91,20 +92,26 @@ class AttendanceScanController extends Controller
             }
 
             // Create Attendance Record
-            // Note: ClassSession stores subject_id in course_id field
-            $attendance = AttendanceRecord::create([
-                'session_id' => $session->id,
-                'student_id' => $student->id,
-                'subject_id' => $session->course_id, // course_id stores subject_id
-                'status' => $status,
-                'timestamp' => now(),
-                'recorded_by' => Auth::id(), 
-                'scan_event_id' => $scanEvent->id,
-                'device_info' => $request->device_info,
-            ]);
+            $attendance = AttendanceRecord::updateOrCreate(
+                [
+                    'session_id' => $session->id,
+                    'student_id' => $student->id,
+                ],
+                [
+                    'subject_id' => $session->subject_id,
+                    'status' => $status,
+                    'timestamp' => now(),
+                    'recorded_by' => Auth::id(),
+                    'scan_event_id' => $scanEvent->id,
+                    'device_info' => $request->device_info,
+                    'notes' => $existingRecord ? 'Updated via QR scan' : null,
+                ],
+            );
 
             return response()->json([
-                'message' => $status === 'late' ? 'Marked as late' : 'Attendance recorded successfully',
+                'message' => $existingRecord
+                    ? 'Attendance updated successfully'
+                    : ($status === 'late' ? 'Marked as late' : 'Attendance recorded successfully'),
                 'student' => [
                     'id' => $student->id,
                     'name' => $student->first_name . ' ' . $student->last_name,

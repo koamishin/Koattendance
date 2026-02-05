@@ -3,57 +3,106 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
+use App\Models\ClassSession;
+use App\Models\Course;
 use App\Models\Student;
 use App\Models\Subject;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class AttendanceController extends Controller
 {
-    public function updateStatus($id): \Illuminate\Http\Response | \Illuminate\Http\RedirectResponse
+    public function updateStatus(string $id, Request $request): \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
     {
-        // Handle unmarked students (id will be null, but studentName will be provided)
-        if ($id === 'null' || $id == null) {
-            $studentName = request('studentName');
-            $student = Student::where('name', $studentName)->first();
-            
-            // If student is not found by name, try to find by ID if provided in request context
-            // Or if we change the frontend to pass student ID.
-            if (!$student) {
-                 // Try to find by ID if we have it in the request payload or query
-                 // Ideally frontend should send student_id for creation.
-            }
-
-            if (! $student) {
-                return back()->with('error', 'Student not found');
-            }
-
-            // Use the provided date or get the latest date
-            $date = request('date') ? \Carbon\Carbon::parse(request('date')) : (AttendanceRecord::orderBy('timestamp', 'desc')->first()?->timestamp ?? now());
-            
-            $subjectId = request('subjectId') ? (int) request('subjectId') : null;
-
-            AttendanceRecord::create([
-                'student_id' => $student->id,
-                // 'student_name' => $studentName, // Removed as column doesn't exist in schema
-                'status' => request('status'),
-                'timestamp' => $date->setTimeFrom(now()),
-                'subject_id' => $subjectId,
-                'recorded_by' => \Illuminate\Support\Facades\Auth::id(),
+        if ($id === 'null') {
+            $validated = $request->validate([
+                'status' => 'required|in:present,late,absent',
+                'student_id' => 'required|exists:students,id',
+                'session_id' => 'nullable|exists:class_sessions,id',
+                'subjectId' => 'nullable|exists:subjects,id',
+                'date' => 'nullable|date',
             ]);
 
-            return back()->with('success', 'Attendance marked successfully');
+            $studentId = (int) $validated['student_id'];
+
+            $session = null;
+            if (! empty($validated['session_id'])) {
+                $session = ClassSession::findOrFail((int) $validated['session_id']);
+            } else {
+                $user = Auth::user();
+                $teacherId = $user?->teacher?->id;
+                $subjectId = ! empty($validated['subjectId']) ? (int) $validated['subjectId'] : null;
+                $scheduledDate = ! empty($validated['date'])
+                    ? \Carbon\Carbon::parse($validated['date'])->startOfDay()
+                    : \Carbon\Carbon::today();
+
+                if (! $teacherId || ! $subjectId) {
+                    return back()->with('error', 'Unable to determine session for attendance entry');
+                }
+
+                $subject = Subject::find($subjectId);
+                $course = Course::firstOrCreate(
+                    ['code' => 'SUBJ-'.$subjectId],
+                    [
+                        'name' => $subject?->name ?? 'Subject '.$subjectId,
+                        'description' => $subject?->description,
+                        'grade_level' => 1,
+                        'credits' => 1,
+                        'type' => 'core',
+                        'is_active' => true,
+                    ],
+                );
+
+                $status = $scheduledDate->isPast() ? 'completed' : 'in_progress';
+
+                $session = ClassSession::firstOrCreate(
+                    [
+                        'teacher_id' => $teacherId,
+                        'subject_id' => $subjectId,
+                        'scheduled_date' => $scheduledDate,
+                    ],
+                    [
+                        'course_id' => $course->id,
+                        'section_id' => null,
+                        'room' => 'Default',
+                        'start_time' => now()->format('H:i:s'),
+                        'end_time' => now()->addHours(2)->format('H:i:s'),
+                        'status' => $status,
+                        'attendance_mode' => 'manual',
+                        'late_threshold_minutes' => 15,
+                    ],
+                );
+            }
+
+            if ($session->subject_id && ! empty($validated['subjectId']) && (int) $validated['subjectId'] !== (int) $session->subject_id) {
+                return back()->with('error', 'Session does not match subject');
+            }
+
+            $record = AttendanceRecord::updateOrCreate(
+                [
+                    'session_id' => $session->id,
+                    'student_id' => $studentId,
+                ],
+                [
+                    'subject_id' => $session->subject_id ?? (! empty($validated['subjectId']) ? (int) $validated['subjectId'] : null),
+                    'status' => $validated['status'],
+                    'timestamp' => now(),
+                    'recorded_by' => Auth::id(),
+                ],
+            );
+
+            return back()->with('success', $record->wasRecentlyCreated ? 'Attendance marked successfully' : 'Attendance updated successfully');
         }
 
-        $record = AttendanceRecord::find($id);
+        $validated = $request->validate([
+            'status' => 'required|in:present,late,absent',
+        ]);
 
-        if (! $record) {
-            return back()->with('error', 'Record not found');
-        }
+        $record = AttendanceRecord::findOrFail($id);
 
         $record->update([
-            'status' => request('status'),
+            'status' => $validated['status'],
         ]);
 
         return back()->with('success', 'Attendance updated successfully');
@@ -62,11 +111,13 @@ class AttendanceController extends Controller
     public function index(): JsonResponse
     {
         $selectedSubjectId = request('subjectId') ? (int) request('subjectId') : null;
-        $selectedDate = request('date') 
-            ? \Carbon\Carbon::parse(request('date')) 
+        $selectedDate = request('date')
+            ? \Carbon\Carbon::parse(request('date'))->startOfDay()
             : \Carbon\Carbon::today();
 
-        // 1. Get Enrolled Students for the selected Subject
+        $user = Auth::user();
+        $teacherId = $user?->teacher?->id;
+
         $enrolledStudents = collect();
         if ($selectedSubjectId) {
             $subject = Subject::with('students')->find($selectedSubjectId);
@@ -74,24 +125,44 @@ class AttendanceController extends Controller
                 $enrolledStudents = $subject->students;
             }
         } else {
-            // If no subject selected, maybe show all students? 
-            // Or better, return empty list until subject is picked.
-            // For backward compatibility or "Overview" mode, we might fetch all.
-            // But user wants "Per Subject".
-            // Let's return empty if no subject is selected, forcing selection.
-            $enrolledStudents = collect(); 
+            $enrolledStudents = collect();
         }
 
-        // 2. Get Attendance Records for the selected date and subject
-        $recordsQuery = AttendanceRecord::query()
-            ->with('student')
-            ->whereDate('timestamp', $selectedDate);
-
+        $session = null;
         if ($selectedSubjectId) {
-            $recordsQuery->where('subject_id', $selectedSubjectId);
+            $courseId = Course::where('code', 'SUBJ-'.$selectedSubjectId)->value('id');
+            $sessionQuery = ClassSession::query()
+                ->whereDate('scheduled_date', $selectedDate)
+                ->where(function ($query) use ($selectedSubjectId, $courseId) {
+                    $query->where('subject_id', $selectedSubjectId)
+                        ->orWhere('course_id', $selectedSubjectId);
+
+                    if ($courseId) {
+                        $query->orWhere('course_id', $courseId);
+                    }
+                });
+
+            if ($teacherId) {
+                $sessionQuery->where('teacher_id', $teacherId);
+            }
+
+            $session = (clone $sessionQuery)
+                ->where('status', 'in_progress')
+                ->latest('id')
+                ->first();
+
+            if (! $session) {
+                $session = $sessionQuery->latest('id')->first();
+            }
         }
 
-        $attendanceRecords = $recordsQuery->get()->keyBy('student_id');
+        $attendanceRecords = $session
+            ? AttendanceRecord::query()
+                ->with('student')
+                ->where('session_id', $session->id)
+                ->get()
+                ->keyBy('student_id')
+            : collect();
 
         // 3. Merge Enrolled Students with Attendance Records
         $mergedRecords = $enrolledStudents->map(function ($student) use ($attendanceRecords, $selectedDate) {
@@ -129,20 +200,31 @@ class AttendanceController extends Controller
             'total' => $mergedRecords->count(),
         ];
 
-        // Dates for selection (this might need to be smarter, e.g., session dates)
-        // For now, keep the "Last 30 days + Future" logic or just rely on date picker
         $today = \Carbon\Carbon::today();
         $availableDates = [];
-        for ($i = 0; $i <= 30; $i++) {
+        for ($i = -30; $i <= 30; $i++) {
             $availableDates[] = $today->copy()->addDays($i)->format('Y-m-d');
         }
-        // Also add dates that have records
-        $existingDates = AttendanceRecord::where('subject_id', $selectedSubjectId)
-            ->pluck('timestamp')
-            ->map(fn($d) => $d instanceof \Carbon\Carbon ? $d->format('Y-m-d') : \Carbon\Carbon::parse($d)->format('Y-m-d'))
-            ->toArray();
-        
-        $availableDates = array_unique(array_merge($existingDates, $availableDates));
+
+        $existingSessionDates = [];
+        if ($selectedSubjectId) {
+            $courseId = Course::where('code', 'SUBJ-'.$selectedSubjectId)->value('id');
+            $existingSessionDates = ClassSession::query()
+                ->where(function ($query) use ($selectedSubjectId, $courseId) {
+                    $query->where('subject_id', $selectedSubjectId)
+                        ->orWhere('course_id', $selectedSubjectId);
+
+                    if ($courseId) {
+                        $query->orWhere('course_id', $courseId);
+                    }
+                })
+                ->when($teacherId, fn ($q) => $q->where('teacher_id', $teacherId))
+                ->pluck('scheduled_date')
+                ->map(fn ($d) => $d instanceof \Carbon\Carbon ? $d->format('Y-m-d') : \Carbon\Carbon::parse($d)->format('Y-m-d'))
+                ->toArray();
+        }
+
+        $availableDates = array_unique(array_merge($existingSessionDates, $availableDates));
         rsort($availableDates);
 
         // Get all subjects for dropdown
@@ -154,11 +236,18 @@ class AttendanceController extends Controller
 
         return response()->json([
             'attendanceRecords' => $mergedRecords,
+            'groupedRecords' => [],
             'stats' => $stats,
             'selectedDate' => $selectedDate->format('Y-m-d'),
             'availableDates' => array_values($availableDates),
             'subjects' => $subjects,
             'selectedSubjectId' => $selectedSubjectId,
+            'session' => $session ? [
+                'id' => $session->id,
+                'status' => $session->status,
+                'scheduled_date' => $session->scheduled_date?->format('Y-m-d'),
+                'late_threshold_minutes' => $session->late_threshold_minutes,
+            ] : null,
         ]);
     }
 

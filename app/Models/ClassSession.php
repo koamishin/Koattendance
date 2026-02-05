@@ -12,6 +12,7 @@ class ClassSession extends Model
     protected $fillable = [
         'course_id',
         'section_id',
+        'subject_id',
         'teacher_id',
         'room',
         'scheduled_date',
@@ -38,6 +39,11 @@ class ClassSession extends Model
     public function section()
     {
         return $this->belongsTo(Section::class);
+    }
+
+    public function subject()
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function teacher()

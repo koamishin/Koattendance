@@ -24,7 +24,7 @@ test('student can generate qr code', function () {
 
 test('teacher can scan valid student qr code', function () {
     // Setup
-    $teacherUser = User::factory()->create();
+    $teacherUser = User::factory()->teacher()->create();
     $teacher = Teacher::factory()->create(['user_id' => $teacherUser->id]);
     
     $course = Course::factory()->create();
@@ -34,6 +34,10 @@ test('teacher can scan valid student qr code', function () {
         'course_id' => $course->id,
         'section_id' => $section->id,
         'teacher_id' => $teacher->id,
+        'status' => 'in_progress',
+        'scheduled_date' => now()->toDateString(),
+        'start_time' => now()->format('H:i:s'),
+        'end_time' => now()->addHour()->format('H:i:s'),
     ]);
 
     $student = Student::factory()->create([
@@ -71,11 +75,17 @@ test('teacher can scan valid student qr code', function () {
     ]);
 });
 
-test('duplicate scan is rejected', function () {
+test('duplicate scan updates existing attendance record', function () {
     // Setup
-    $teacherUser = User::factory()->create();
+    $teacherUser = User::factory()->teacher()->create();
     $teacher = Teacher::factory()->create(['user_id' => $teacherUser->id]);
-    $session = ClassSession::factory()->create(['teacher_id' => $teacher->id]);
+    $session = ClassSession::factory()->create([
+        'teacher_id' => $teacher->id,
+        'status' => 'in_progress',
+        'scheduled_date' => now()->toDateString(),
+        'start_time' => now()->format('H:i:s'),
+        'end_time' => now()->addHour()->format('H:i:s'),
+    ]);
     $student = Student::factory()->create();
     
     $student->generateQrCode();
@@ -94,16 +104,23 @@ test('duplicate scan is rejected', function () {
     ]);
 
     // Assert
-    $response->assertStatus(400)
+    $response->assertStatus(200)
         ->assertJson([
-            'message' => 'Duplicate scan',
-            'scan_status' => 'failed',
+            'message' => 'Attendance updated successfully',
+            'scan_status' => 'success',
         ]);
 });
 
 test('invalid qr code is rejected', function () {
-    $teacherUser = User::factory()->create();
-    $session = ClassSession::factory()->create();
+    $teacherUser = User::factory()->teacher()->create();
+    $teacher = Teacher::factory()->create(['user_id' => $teacherUser->id]);
+    $session = ClassSession::factory()->create([
+        'teacher_id' => $teacher->id,
+        'status' => 'in_progress',
+        'scheduled_date' => now()->toDateString(),
+        'start_time' => now()->format('H:i:s'),
+        'end_time' => now()->addHour()->format('H:i:s'),
+    ]);
 
     $response = $this->actingAs($teacherUser)->postJson(route('api.attendance.scan'), [
         'qr_code' => 'invalid-garbage-data',
@@ -117,8 +134,15 @@ test('invalid qr code is rejected', function () {
 });
 
 test('tampered qr code is rejected', function () {
-     $teacherUser = User::factory()->create();
-    $session = ClassSession::factory()->create();
+    $teacherUser = User::factory()->teacher()->create();
+    $teacher = Teacher::factory()->create(['user_id' => $teacherUser->id]);
+    $session = ClassSession::factory()->create([
+        'teacher_id' => $teacher->id,
+        'status' => 'in_progress',
+        'scheduled_date' => now()->toDateString(),
+        'start_time' => now()->format('H:i:s'),
+        'end_time' => now()->addHour()->format('H:i:s'),
+    ]);
     $student = Student::factory()->create();
     
     // Create a fake encrypted string that decrypts to something else
